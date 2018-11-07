@@ -15,6 +15,6 @@ You can run these analyses on your own machine by (1) cloning the repository, (2
 
 These Rmarkdown documents have also been rendered into html format, and can be viewed in your web browser: 
 
-[Analysis](https://github.com/alexpiper/HemipteraMetabarcodingMS/blob/master/hemiptera_metabarcoding.html)
+[Analysis](https://alexpiper.github.io/HemipteraMetabarcodingMS/hemiptera_metabarcoding.html)
 
 Ref database
