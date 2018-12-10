@@ -13,4 +13,8 @@ RDS files holding intermediate data objects suitable for performing the analyses
 
 You can run these analyses on your own machine by (1) cloning the repository, (2) obtaining the raw sequencing data in fastq format, (3) Seperating the fastq files by run in the relevant subdirectory in the data directory, (4) installing required libraries, and (5) pressing Run. Even without the sequencing data, the analysis and plotting portion of each Rmarkdown document can be run using the stored rds files in the data directory.
 
-These Rmarkdown documents have also been rendered into html format, and can be viewed in your web browser:
+These Rmarkdown documents have also been rendered into html format, and can be viewed in your web browser: 
+
+[Analysis](https://alexpiper.github.io/HemipteraMetabarcodingMS/hemiptera_metabarcoding.html)
+
+Ref database
