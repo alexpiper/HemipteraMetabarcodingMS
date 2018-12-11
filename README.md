@@ -17,4 +17,4 @@ These Rmarkdown documents have also been rendered into html format, and can be v
 
 [Analysis](https://alexpiper.github.io/HemipteraMetabarcodingMS/hemiptera_metabarcoding.html)
 
-Ref database
+[Ref database](https://alexpiper.github.io/HemipteraMetabarcodingMS/database_builder.html)
