@@ -6,3 +6,4 @@ data/run2_250/
 data/run3_trap/
 
 *.fa
+.Rproj.user

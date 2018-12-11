@@ -1,7 +1,7 @@
 ---
-title: "pipeRline script for Hemiptera metabarcoding analysis"
+title: "Hemiptera metabarcoding analysis"
 author: "Alexander Piper"
-date: "21/09/2018"
+date: "2018/12/11"
 output:
   html_document: default
   pdf_document: default
@@ -15,6 +15,7 @@ output:
 library(knitr)
 knitr::opts_chunk$set(echo = TRUE, eval=FALSE, fig.show = "hold", fig.keep = "all")
 opts_knit$set(root.dir = 'C:/Users/ap0y/Dropbox/Work Projects/PHD/Metabarcoding/HemipteraMetabarcodingMS')
+setwd('C:/Users/ap0y/Dropbox/Work Projects/PHD/Metabarcoding/HemipteraMetabarcodingMS')
 opts_chunk$set(dev = 'png')
 
 #load scripts from scripts folder
@@ -121,7 +122,7 @@ rm *.temp.*
 
 Load all requried packages
 
-```{r load packages, message=FALSE, eval = TRUE }
+```{r load packages, message=FALSE, eval = FALSE }
 sapply(c("dada2", "phyloseq","ggplot2","ips", "DECIPHER", "data.table", "ggplot2", "tidyverse","Biostrings","ShortRead","scales", "psadd","ggpubr"), require, character.only = TRUE)
 
 ```
@@ -130,7 +131,7 @@ sapply(c("dada2", "phyloseq","ggplot2","ips", "DECIPHER", "data.table", "ggplot2
 ## Error visualisation
 We start by visualizing the quality profiles of the forward read and reverse reads for each run:
 
-```{r pre filter plot, eval=TRUE, cache= TRUE}
+```{r pre filter plot, eval = FALSE, cache= TRUE}
 runs <- dir("data/", pattern="run")
 
 for (i in seq(along=runs)){
@@ -175,7 +176,7 @@ print(filtered_out)
 
 sanity check to see the effects of the filter and trim step
 
-```{r Post filter plot, eval=TRUE, cache= TRUE}
+```{r Post filter plot, eval = FALSE, cache= TRUE}
 runs <- dir("data/", pattern="run")
 
 ##Post filtering plotting
@@ -316,7 +317,7 @@ saveRDS(tax_plus, "output/rds/tax_boot80_final.rds")
 
 Following taxonomic assignment, both the sequence table and taxonomic table are passed to the Phyloseq R package for further community analysis and visualisation of data. This involves loading in the sample info csv to merge with the sequence and taxonomy tables
 
-```{r create PS, eval = TRUE}
+```{r create PS, eval = FALSE}
 seqtab.nochim <- readRDS("output/rds/seqtab_final.rds")
 tax_plus <- readRDS("output/rds/tax_boot80_final.rds") 
 
@@ -343,7 +344,7 @@ saveRDS(ps, "output/rds/ps_final.rds")
 
 ## Output tables of results
 
-```{r output table, eval = TRUE}
+```{r output table, eval = FALSE}
 ps <- readRDS("output/rds/ps_final.rds")
 
 dir.create("output/csv")
@@ -362,19 +363,19 @@ psFR <- transform_sample_counts(ps1, fun = filterfun)
 psFR <- transform_sample_counts(ps1, fun = proportions)
 ##Export filtered data
 export <- psmelt(psFR)
-write.csv(export, file = "output/csv/allgene_alltaxa_filt.csv")
+write.csv(export, file = "output/csv/allgene_arthropoda_filt.csv")
 
-#Export Species level only
+#Agglomerate all OTUS by species level taxonomy and export
 rm_c1 <-  c("Pool-C1-250","Pool-C2-250","Pool-C3-250","Pool-C4-250","Pool-C5-250")
 spp_level <- subset_samples(psFR, sample_names(psFR)!=rm_c1)
 spp_level = tax_glom(spp_level, "Species", NArm = TRUE)
 sppexport <- psmelt(spp_level)
-write.csv(sppexport, file = "output/csv/allgene_spp_filt.csv")
+write.csv(sppexport, file = "output/csv/allgene_sppglom_filt.csv")
 
-#Summarise to species, and export species summary table
+#Agglomerate all OTUS by species level taxonomy, then create summary table and export
 sum_filt <- summarize_taxa(psFR, "Species", "SampleID")
 sum_filt <- spread(sum_filt, key="SampleID", value="totalRA")
-write.csv(sum_filt, file = "output/csv/allgene_spp_filtsummary.csv")
+write.csv(sum_filt, file = "output/csv/allgene_sppglom_filt_summarized.csv")
 
 ```
 
@@ -387,7 +388,7 @@ As part of the mock community analysis, we wish to determine taxonomic bias by l
 This loads a dummy sequence table, taxonomy table, and sample data table and merges it into the existing phyloseq object
 
 
-```{r get expected , eval = TRUE}
+```{r get expected , eval = FALSE}
 #Load expected information
 
 exp_seqtab <- as.matrix(read.csv("sample_data/expected/exp_seqtab.csv",row.names=1, header=TRUE))
@@ -408,7 +409,7 @@ ps_exp <- phyloseq(tax_table(exp_taxtab), sample_data(exp_samdf),
 # Plots for all genes merged
 
 
-```{r Plot all genes, eval = TRUE}
+```{r Plot all genes, eval = FALSE}
 dir.create("output/figs")
 
 positions = c('Pool-01-100', 'Pool-02-100', 'Pool-03-100', 'Pool-04-100', 'Pool-05-100', 'Pool-06-500', 'Pool-07-500', 'Pool-08-500', 'Pool-09-500', 'Pool-10-500', 'Pool-11-1000', 'Pool-12-1000', 'Pool-13-1000', 'Pool-14-1000', 'Pool-15-1000', 'Pool-U1-250', 'Pool-U2-250', 'Pool-U3-250', 'Pool-U4-250', 'Pool-U5-250', 'Trap-01', 'Trap-02', 'Trap-03', 'Trap-04', 'Trap-05', 'Trap-06', 'Trap-07', 'Trap-08', 'Trap-09', 'Trap-10')
@@ -543,12 +544,9 @@ tax_table(ps_genexp) <- tax_table(ps_genexp)[,2:7]
 
 #Summary export
 summary <-  subset_samples(ps_genexp, experimental_factor == "O")
-gen_summary <- summarize_taxa(summary, "Genus", "SampleID")
-gen_summary <- spread(gen_summary, key="SampleID", value="totalRA")
-write.csv(gen_summary, file = paste0("output/csv/",genes[i],"_gen_summary.csv"))
 sp_summary <- summarize_taxa(summary, "Species", "SampleID")
 sp_summary <- spread(sp_summary, key="SampleID", value="totalRA")
-write.csv(sp_summary, file = paste0("output/csv/",genes[i],"_sp_summary.csv"))
+write.csv(sp_summary, file = paste0("output/csv/",genes[i],"_sppglom_filt_summarized.csv"))
 
 ##Transform data to proportions and set low proportions to zero - NEEDED TO REMOVE INDEX SWITCHING
 
@@ -595,5 +593,3 @@ plot(p3)
 dev.off()
 }
 ```
-
-

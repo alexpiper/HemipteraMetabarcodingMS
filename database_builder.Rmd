@@ -1,0 +1,546 @@
+---
+title: "Hemiptera reference database builder"
+author: "Alexander Piper"
+date: "2018/12/11"
+output:
+  html_document:
+    df_print: paged
+---
+
+
+```{r setup, include=FALSE}
+
+# Knitr global setup - change eval to true to run code
+
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE, eval=FALSE, fig.show = "hold", fig.keep = "all")
+opts_knit$set(root.dir = 'C:/Users/ap0y/Dropbox/Work Projects/PHD/Metabarcoding/HemipteraMetabarcodingMS')
+opts_chunk$set(dev = 'png')
+
+#load scripts from scripts folder
+read_chunk('scripts/summary_func.R')
+```
+
+
+# Introduction
+
+This is the R based reproducible workflow for assembling the taxanomic reference database used in the manuscript " " by Batovska et al
+
+For this study, 3 seperate primer sets were used to amplify COI, 18S and 12S genes, and therefore a reference database is required for each of these. To form this database, the below script was run seperately for the 3 gene regions, and the fasta files for the complete genes were merged at the end.
+
+
+## Setup
+
+```{r }
+##Load Necessary packages
+sapply(c("rentrez","bold", "seqinr","taxonomizr","rBLAST", "tidyverse", "data.table" ), require, character.only = TRUE)
+```
+
+
+```{r Get necessary taxonomy files, eval=FALSE}
+
+#NCBI taxonomy database is required for processing genbank files.
+#Warning: Very large download and SQL database
+
+getNamesAndNodes()
+getAccession2taxid()
+
+#Convert acc2taxid to SQL
+read.accession2taxid(list.files('.','accession2taxid.gz$'),'accessionTaxa.sql')
+```
+
+## Fetch BOLD sequences for Arthropoda
+
+```{r Fetch BOLD Sequences}
+
+##A list of all Arthropod orders on BOLD was used instead of just Arthropoda in order to save memory 
+
+bold_taxon <- readLines(con="Bold_Arthropoda_orders.txt") 
+bold_loci <- c("COI-5P")        ##the bold package downloads all loci by default, this is used to isolate the desired loci
+output <- "Arthropoda_COI"      ##name to add to output sequences
+
+dir.create("reference/bold")
+
+for (k in 1:length(bold_taxon)){
+  time <- Sys.time() # get time
+  date <- Sys.Date()
+  data <- bold_seqspec(bold_taxon =bold_taxon[k])
+
+    possibleError <- tryCatch( if(length(data)!=0){
+    
+    cat(file=paste0("reference/bold/",bold_taxon[k], "_", date,"_BOLD.csv")) # delete old file
+      
+    #Write column headers
+    write.table(data[1,], file=paste0("reference/bold/",bold_taxon[k], "_", date,"_BOLD.csv"), append=T, sep="," , row.names = FALSE)
+    
+    #Write data
+    for (i in 1:nrow(data)){
+      write.table(data[i,], file=paste0("reference/bold/",bold_taxon[k], "_", date,"_BOLD.csv"), append=T, sep=",", row.names = FALSE, col.names = FALSE)
+    }
+  } ,
+  error=function(e) 
+    if(inherits(possibleError, "error")) next
+  
+  )
+  time <- Sys.time() - time
+  message(paste("Downloaded ", nrow(data)," sequences and specimen information for ", bold_taxon[k], " in ", format(time, digits=2), " from BOLD.", sep=""))
+}
+
+
+#Isolate COI-5P from all BOLD sequences and merge into 1 large fasta
+
+bold_path <- "reference/bold/" # CHANGE ME to the directory containing all downloaded bold CSV files
+bold_dl <- sort(list.files(bold_path, pattern=".csv", full.names = TRUE) )# Read CSV filenames
+length(bold_dl)
+
+##Delete old file
+cat(file=paste(file=paste(output,"_BOLD.fa"))) # delete old file
+l = 1 
+possibleError <- 1 ##Need to create object in advance
+for (l in 1:length(bold_dl)){
+        time <- Sys.time() # get time
+      possibleError <- tryCatch( if (file.size(bold_dl[l]) > 0){
+        
+      #Read in bold_seqspec CSV
+      data <- read.csv(bold_dl[l], na.strings = c("","NA"))
+      prefilt <- nrow(data)
+      name <- bold_dl[l] %>%
+        str_split_fixed("_", n=2)
+      name <- name[[1]] %>%
+        str_split_fixed("/", n=2)
+      
+      #Subset to necessary rows & Filter
+      data <- subset(data, select=c("processid", "phylum_name", "class_name", "order_name", "family_name", "genus_name", "species_name","markercode", "nucleotides")) %>% 
+        na.omit() %>% #Remove all rows with NA
+        dplyr::filter(grepl(bold_loci, markercode)) %>% #Remove all sequences for unwanted markers
+        dplyr::filter(!grepl("sp.", species_name))
+     #message(paste("Filtered ", (prefilt-nrow(data))," sequences from ", name[[2]], " that were not ", bold_loci, " or did not have species level taxonomy", sep=""))
+      #Add Domain level to match GenBank download
+      data$domain_name <- "Eukaryota"
+      
+      #Get sequence names
+      bold_seqname <- subset(data, select=c("processid", "domain_name", "phylum_name", "class_name", "order_name", "family_name", "genus_name", "species_name"))
+      bold_seqname <- apply(bold_seqname, 1, paste, collapse=";")
+      bold_seqname <- str_replace_all(bold_seqname," ","_")
+      data <- as.character(data$nucleotides)
+      
+      #Write out fasta
+      for (i in 1:length(data)){
+        exp <- paste(">", bold_seqname[i], "\n", data[i], "\n", sep="")
+        cat(exp, file=paste0("reference/bold/",output,"_BOLD.fa"), append=T)
+      }
+      
+  time <- Sys.time() - time
+  message(paste("Added ",length(bold_seqname)," ", name[[2]], " Sequences to fasta in ", format(time, digits=2), sep=""))},
+  error=function(e) {warning(paste("Error, no data for", bold_loci," in file :", bold_dl[l]))},
+    if(inherits(possibleError, "Error - Empty file")) next)
+}
+ 
+
+```
+
+## Fetch GenBank sequences for Arthropoda
+
+```{r Fetch GenBank Sequences}
+
+ncbi_taxon <- ("Arthropoda")
+ncbi_loci <- c("COI", "CO1")         ##Search terms to download, split terms with a comma
+output <- "Arthropoda_COI"           ##name to add to output sequences
+maxlength <- 2000  
+
+#Set up search term
+searchQ <- paste("(",ncbi_taxon, "[ORGN])", " AND (", paste(c(ncbi_loci), collapse=" OR "), ") AND 1:",maxlength ,"[Sequence Length]", sep="")
+
+#Conduct entrez search
+search_results <- entrez_search(db   = "nuccore", term = searchQ, retmax=9999999, use_history=TRUE)
+message(paste(search_results$count," Sequences to be downloaded"))
+
+destfile <- paste("reference/genbank/",output,"_gb.fa", sep="_")
+cat(file = destfile, sep="") # delete old file
+
+i <- 1
+start <- 0
+time <- Sys.time() # get time
+
+
+chunks <- length(search_results$ids)/10000
+if (!is.integer(chunks)){chunks <- as.integer(length(search_results$ids)/10000)+1}
+
+for(i in 1:chunks){
+  dl <- entrez_fetch(db="nuccore", web_history= search_results$web_history, rettype="fasta", retmax=10000, retstart= start)
+  
+  cat(dl, file= destfile, sep=" ", append=T)
+  message("Chunk", i, " of ",chunks, " downloaded\r")
+  start <- start + 10000
+  Sys.sleep(2.5)
+  
+  if (i >= chunks){
+    time <- Sys.time() - time
+    message(paste("Download complete for: ", search_results$count," Sequences in ",  format(time, digits=2), "From Genbank"))
+  }
+}
+
+##Check if Download worked
+if (i < chunks){
+  message(paste("Warning: Less sequences than expected, attempt download again"))
+}
+
+```
+
+
+## Trim sequences using Geneious Prime
+
+Sequences need to be trimmed to primer regions, as there are millions of sequences a de-novo alignment of these is impractical. Instead sequences were mapped to Hemipteran reference sequences (Mitogenome or long rRNA sequence) in Geneious Prime, and regions between primers were extracted.
+
+
+## Retrieve taxonomy for genbank sequences
+
+```{r process genbank sequences}
+
+output <- "Arthropoda_COI"           ##name to add to output sequences
+
+##Get taxonomy
+taxaNodes<-read.nodes('nodes.dmp')
+taxaNames<-read.names('names.dmp')
+
+genbank_dl <- read.fasta(file=paste0("reference/genbank/",output,"_gb_trimmed.fasta"), strip.desc = FALSE, as.string = FALSE)  # default is DNA; add ", seqtype = "AA" for protein
+
+genbank_acc <- getName(genbank_dl)
+##If there is extra in the getName ie: _(reversed)
+genbank_acc <- genbank_acc %>%
+  str_split_fixed( "_", n=2)
+taxaId <- accessionToTaxa(genbank_acc[,1],"accessionTaxa.sql")
+
+lineage <- as.data.frame(getTaxonomy(taxaId,taxaNodes,taxaNames))
+lineage <- tibble::rownames_to_column(lineage)
+taxlineage <- cbind(genbank_acc[,1], lineage)
+
+genbank_taxname <- subset(taxlineage, select=c("genbank_acc[, 1]", "superkingdom", "phylum", "class", "order", "family", "genus", "species"))
+genbank_taxname <- apply(genbank_taxname, 1, paste, collapse=";")
+genbank_taxname <- str_replace_all(genbank_taxname," ","_")
+
+write.fasta(genbank_dl, genbank_taxname, paste0("reference/genbank/",output,"_gbtaxonomy.fa"), as.string=FALSE, nbchar=100)
+rm (list= c("genbank_dl", "taxaNames", "taxaNodes", "lineage", "taxlineage"))
+
+```
+
+## Merge datasets and filter
+
+```{r merge & filter}
+output <- "Arthropoda_COI"           ##name to add to output sequences
+
+##Merge genbank and boldfastas
+bold <- read.fasta(file=paste0("reference/bold/",output,"_bold_trimmed.fasta"), strip.desc = FALSE, as.string = FALSE)  
+bold_names <- getName(bold)
+
+genbank <- read.fasta(file=paste("reference/genbank/",output,"_gbtaxonomy.fa"), strip.desc = FALSE, as.string = FALSE)  
+genbank_names <- getName(genbank)
+
+write.fasta(c(bold, genbank), c(bold_names, genbank_names), paste0("reference/",output,"_mergeddb.fa"), as.string=FALSE, nbchar=100)
+rm (list= c("genbank", "genbank_names", "bold", "bold_names"))
+
+#Read in Merged file
+merged <- read.fasta(paste0("reference/",output,"_mergeddb.fa"), strip.desc = FALSE, as.string = FALSE)  # default is DNA; add ", seqtype = "AA" for protein
+
+##Filter failed taxonomy - NA;NA
+merged_names <- getAnnot(merged)
+merged_filtered <- merged[!grepl("NA;NA", merged_names)]
+filt_na <- (length(merged)- length(merged_filtered))
+message(filt_na, " sequences removed containing NA's")
+
+##Filter sequences of innapropriate length
+merged_filtered <- merged_filtered[which(getLength(merged_filtered) >200)] ##Remove all sequences below 200bp
+merged_filtered<- merged_filtered[which(getLength(merged_filtered)<3000)] #Remove all sequences above 300bp
+filt_size <- ((length(merged)- length(merged_filtered)) - filt_na)
+message(filt_size, " sequences removed outside of length filters")
+
+##Filter duplicate sequences
+merged_filtered<- unique(merged_filtered)
+filt_uniq <- ((length(merged)- length(merged_filtered)) - filt_na - filt_size)
+message(filt_uniq, " duplicate sequences removed")
+
+##Filter any further erroneous or insufficiently identified sequences
+
+keyword_filt <- as.tibble(unlist(getAnnot(merged_filtered)))
+keyword_filt <- keyword_filt %>%
+  dplyr::filter(!str_detect(value, fixed("sp."))) %>%
+  dplyr::filter(!str_detect(value, fixed("aff."))) %>%
+  dplyr::filter(!str_detect(value, fixed("nr."))) %>%
+  dplyr::filter(!str_detect(value, fixed("cf."))) %>%
+  dplyr::filter(!str_detect(value, fixed("nom."))) %>%
+  dplyr::filter(!str_detect(value, fixed("nud."))) %>%
+  dplyr::filter(!str_detect(value, fixed("environment"))) %>%
+  dplyr::filter(!str_detect(value, fixed("undescribed"))) %>%
+  dplyr::filter(!str_detect(value, fixed("unverified"))) %>%
+  dplyr::filter(!str_detect(value, fixed("uncultured"))) %>%
+  dplyr::filter(!str_detect(value, fixed("unidentif"))) %>%
+  dplyr::filter(!str_detect(value, fixed("Bacterium"))) %>%
+  dplyr::filter(!str_detect(value, fixed("wolbachia"))) %>%
+  dplyr::filter(!str_detect(value, fixed("symbiont"))) %>%
+  dplyr::filter(!str_detect(value, fixed("Bacterium"))) %>%
+  dplyr::filter(!str_detect(value, fixed("NA"))) %>%
+  dplyr::filter(!str_detect(value, fixed("error"))) %>%
+  dplyr::filter(!str_detect(value, fixed("CO1_COnsensus")))
+
+rm_keywords <- keyword_filt$value
+
+name_filtered <- merged_filtered[getAnnot(merged_filtered) %in% rm_keywords]
+message(paste((length(merged_filtered)- length(name_filtered)), "sequences removed")) 
+
+#Write out filtered fasta
+name_filtered_annot <- getName(name_filtered)
+write.fasta(name_filtered, name_filtered_annot, paste0("reference/",output,"_tempfilt1.fa"), as.string=FALSE, nbchar=100)
+
+rem <- paste0("reference/",output,"_mergeddb.fa")
+if (file.exists(rem)) file.remove(rem)
+
+```
+
+## Filter Wolbachia contaminant sequences
+
+```{r filter wolbachia}
+
+##Download All Wolbachia sequences for target loci
+#Set up search term
+ncbi_loci <- c("COI", "CO1") 
+
+wolb_search <- paste("(wolbachia [ORGN]) AND (", paste(c(ncbi_loci), collapse=" OR "),") AND 1:2000[Sequence Length]", sep="")
+
+#Conduct entrez search
+search_results <- entrez_search(db   = "nuccore", term = wolb_search, retmax=9999999, use_history=TRUE)
+message(paste(search_results$count," Sequences to be downloaded"))
+
+destfile <- paste0("reference/",output,"_wolbachia_loci.fasta")
+cat(file = destfile, sep="") # delete old file
+
+i <- 1
+start <- 0
+time <- Sys.time() # get time
+
+
+chunks <- length(search_results$ids)/10000
+if (!is.integer(chunks)){chunks <- as.integer(length(search_results$ids)/10000)+1}
+
+for(i in 1:chunks){
+  dl <- entrez_fetch(db="nuccore", web_history= search_results$web_history, rettype="fasta", retmax=10000, retstart= start)
+  
+  cat(dl, file= destfile, sep=" ", append=T)
+  message("Chunk", i, " of ",chunks, " downloaded\r")
+  start <- start + 10000
+  Sys.sleep(2.5)
+  
+  if (i >= chunks){
+    time <- Sys.time() - time
+    message(paste("Download complete for: ", search_results$count," Sequences in ",  format(time, digits=2), "From Genbank"))
+  }
+}
+
+##Check if Download worked
+if (i < chunks){
+  message(paste("Warning: Less sequences than expected, attempt download again"))
+}
+
+
+wolb_uniq <- read.fasta(paste0("reference/",output,"_wolbachia_loci.fasta"),strip.desc = FALSE, as.string = FALSE) 
+wolb_uniq <- unique(wolb_uniq)
+names_wolb_uniq <- getName(wolb_uniq)
+write.fasta(wolb_uniq, names_wolb_uniq, paste0("reference/",output,"_wolbachia_loci.fasta"))
+
+```
+
+The wolbachia sequences were turned into a BLAST DB and all insecta sequences were queried against it to identify any contaminant wolbachia sequences 
+
+```{bash}
+makeblastdb -in Arthropoda_COI_wolbachia_loci.fasta -parse_seqids -dbtype nucl
+blastn -db wolbachia_loci.fasta -query Arthropoda_COI_tempfilt1.fa -out wolbachia_out.csv -outfmt 6 -perc_identity 95
+```
+
+Any sequences matching wolbachia were then filtered from the sequence files
+```{r }
+
+filtered_1 <- read.fasta(paste0("reference/",output,"_tempfilt1.fa"),strip.desc = FALSE, as.string = FALSE)  # default is DNA; add ", seqtype = "AA" for protein
+
+wolbachia_filt <- fread("wolbachia_out.csv")
+
+wolb <- wolbachia_filt$V1
+wolb <- paste0(">",wolb)
+
+
+wolb_filtered <- filtered_1[!getAnnot(filtered_1) %in% wolb]
+message(paste((length(filtered_1)- length(wolb_filtered)), "sequences removed")) 
+names_wolb_filtered <- getName(wolb_filtered)
+write.fasta(wolb_filtered, names_wolb_filtered, paste0("reference/",output,"_tempfilt2.fa"))
+
+rem <- paste0("reference/",output,"_tempfilt1.fa")
+if (file.exists(rem)) file.remove(rem)
+
+```
+
+
+## Filter taxanomically mislabelled sequences
+
+The third filter applied was to remove any taxonomically mislabelled sequnces
+
+This was achieved by clustering the sequences at 99% and flagging any clusters that contained more than one order
+
+```{bash}
+#Sumaclust was then used on the file
+/home/ap0y/sumaclust_v1.0.31/sumaclust -t 0.99 Arthropoda_COI_tempfilt2.fa > clustered_99%.fa
+```
+
+
+```{r post clustering}
+#read in Sumaclust clustered file & get headers 
+clustered<- read.fasta("clustered_99%.fa",strip.desc = FALSE, as.string = FALSE)  # default is DNA; add ", seqtype = "AA" for protein
+clust_head <- getAnnot(clustered)
+
+#clean up table
+clust_split <- str_split_fixed(clust_head, ";", n=12)
+clust_split <- as.data.table(clust_split)
+
+clust_sub <- subset(clust_split, select=c("V1","V2","V3","V4","V5","V6","V7","V8", "V10")) %>%
+  separate(V10, c("waste","accession"), sep="=", extra="merge" ) 
+
+clust_sub <-   subset(clust_sub, select=c("V1","V2","V3","V4","V5","V6","V7","V8","accession"))
+colnames(clust_sub) <- c("seq_acc", "Domain","Phylum","Class","Order","Family","Genus","Genus_species", "clust_acc")
+
+##Subset missanotated sequences
+mis_annot <- clust_sub %>%
+  group_by_(.dots = names(clust_sub)[9]) %>%
+  filter(n_distinct(Order) > 1)
+print(nrow(mis_annot))
+
+write.csv(mis_annot, file=paste0("reference/",output,"_mis_annot.csv"))
+```
+
+The flagged clusters were then manually explored using a blast against the NCBI nucleotide databse and the tree functionality, and the ID's of putatively mislabelled sequences entered in the "remove_seq.txt" file for removal from dataset 
+
+```{r }
+remove_seq <- readLines(con = "reference/remove_seq.txt")
+pre_cluster<- read.fasta(paste0("reference/",output,"_tempfilt2.fa"),strip.desc = FALSE, as.string = FALSE)  # default is DNA; add ", seqtype = "AA" for protein
+
+pre_cluster_annot <- getAnnot(pre_cluster)
+remove_rows <- str_split_fixed(pre_cluster_annot, ";", n=8)
+remove_rows <- remove_rows[,1]
+mis_filtered <- pre_cluster[!remove_rows %in% remove_seq]
+message(paste((length(pre_cluster)- length(mis_filtered)), "mis-annotated sequences removed")) 
+
+##Write this out
+
+mis_filtered_annot <- getName(mis_filtered)
+write.fasta(mis_filtered, mis_filtered_annot, paste0("reference/",output,"_tempfilt3.fa"))
+rm(mis_filtered, mis_filtered_annot,mis_filtered_annot,pre_cluster,name_filtered)
+
+rem <- paste0("reference/",output,"_tempfilt2.fa")
+if (file.exists(rem)) file.remove(rem)
+```
+
+## Create gene specific databases
+
+dada2::assignTaxonomy expects a training fasta file in which the taxonomy corresponding to each sequence is encoded in the id line as below:
+
+```{code}
+>Level1;Level2;Level3;Level4;Level5;Level6;
+ACCTAGAAAGTCGTAGATCGAAGTTGAAGCATCGCCCGATGATCGTCTGAAGCTGTAGCATGAGTCGATTTTCACATTCAGGGATACCATAGGATAC
+```
+
+For Species level assignment dada2::addSpecies expects a training fasta file  with the id line formatted as below:
+```{code}
+> ID Genus species
+ACCTAGAAAGTCGTAGATCGAAGTTGAAGCATCGCCCGATGATCGTCTGAAGCTGTAGCATGAGTCGATTTTCACATTCAGGGATACCATAGGATAC
+```
+
+Fasta files were reformatted to fit these expectations
+
+```{r creat database files}
+##Create Genus Fasta
+rdp_genus<- read.fasta(paste0("reference/",output,"_tempfilt3.fa"),strip.desc = FALSE, as.string = FALSE)  # default is DNA; add ", seqtype = "AA" for protein
+all_names <- getName(rdp_genus)
+names_genus <- str_split_fixed(all_names, ";", n=8)
+names_genus <- as.data.table(names_genus)
+names_genus <- subset(names_genus, select=c("V2","V3","V4","V5","V6","V7")) 
+#Collapse
+names_genus <- apply(names_genus, 1, paste, collapse=";")
+##Add bold_loci to first level of taxonomy
+names_genus <- paste0(bold_loci,"_",names_genus)
+
+#merge in our sequences
+##These sequences may still have primers included - should remove these
+rdp_inhouse <- read.fasta("COI_inhouse.fa",strip.desc = FALSE, as.string = FALSE)  # default is DNA; add ", seqtype = "AA" for protein
+names_rdp_inhouse <- getName(rdp_inhouse)
+names_inhouse_genus <- str_split_fixed(names_rdp_inhouse, ";", n=8)
+names_inhouse_genus <- as.data.table(names_inhouse_genus)
+names_inhouse_genus <- subset(names_inhouse_genus, select=c("V2","V3","V4","V5","V6","V7")) 
+#Collapse
+names_inhouse_genus <- apply(names_inhouse_genus, 1, paste, collapse=";")
+##Add bold_loci to first level of taxonomy
+names_inhouse_genus <- paste0(bold_loci,"_",names_inhouse_genus)
+
+##Save final genus level merged reference DB
+write.fasta(c(rdp_genus, rdp_inhouse), c(names_genus,names_inhouse_genus), paste0("reference/",output,"_rdp_genus.fa"), as.string=FALSE, nbchar=5000)
+
+##Create species Fasta
+
+names_species <- str_split_fixed(all_names, ";", n=8)
+names_species <- as.data.table(names_species)
+names_species <- subset(names_species, select=c("V1","V8")) %>%
+  separate(V8, c("genus","species"), sep="_", extra="merge" ) 
+
+names_species <- apply(names_species, 1, paste, collapse=" ")
+
+names_inhouse_species <- str_split_fixed(names_rdp_inhouse, ";", n=8)
+names_inhouse_species <- as.data.table(names_inhouse_species)
+names_inhouse_species <- subset(names_inhouse_species, select=c("V1","V8")) %>%
+  separate(V8, c("genus","species"), sep="_", extra="merge" ) 
+names_inhouse_species <- apply(names_inhouse_species, 1, paste, collapse=" ")
+
+##Save final species level merged reference DB
+write.fasta(c(rdp_genus, rdp_inhouse), c(names_species,names_inhouse_species), paste0("reference/",output, "_rdp_species.fa"), as.string=FALSE, nbchar=5000)
+
+rem <- paste0("reference/",output,"_tempfilt2.fa")
+if (file.exists(rem)) file.remove(rem)
+```
+
+## Merge 3 genes together into final DB
+
+All above steps were conducted for the COI, 18S and 12S genes targetted in this study, and then the fasta files were merged into one final database
+
+```{r merge genes}
+
+##GENUS
+
+#merge 3 genes
+
+genus_COI <- read.fasta("reference/Arthropoda_COI_rdp_genus.fa",strip.desc = FALSE, as.string = FALSE)
+names_genus_COI <- getName(genus_COI)
+genus_18S <- read.fasta("reference/Arthropoda_18S_rdp_genus.fa",strip.desc = FALSE, as.string = FALSE)
+names_genus_18s <- getName(genus_18S)
+genus_12S <- read.fasta("reference/Arthropoda_12S_rdp_genus.fa",strip.desc = FALSE, as.string = FALSE)
+names_genus_12s <- getName(genus_12S)
+
+## Write merged genus fasta
+write.fasta(c(genus_COI, genus_18S,genus_12S ), c(names_genus_COI,names_genus_18s,names_genus_12s), "reference/merged_arthropoda_rdp_genus.fa", as.string=FALSE, nbchar=5000)
+
+##Remove _ after loci and write final genus level fasta
+genus_merged <- read.fasta("reference/merged_arthropoda_rdp_genus.fa",strip.desc = FALSE, as.string = FALSE)
+names_all <- getName(genus_merged)
+names_all <- str_replace_all(names_all,"_","-")
+names_all <- str_replace_all(names_all,"-5P","")
+
+write.fasta(genus_merged,names_all,"reference/merged_arthropoda_rdp_genus.fa", as.string=FALSE, nbchar=5000)
+
+##Species
+
+#merge 3 genes
+species_COI <- read.fasta("reference/Arthropoda_COI_rdp_species.fa",strip.desc = TRUE, as.string = FALSE)
+names_species_COI <- getAnnot(species_COI)
+species_18S <- read.fasta("reference/Arthropoda_18S_rdp_species.fa",strip.desc = TRUE, as.string = FALSE)
+names_species_18s <- getAnnot(species_18S)
+species_12S <- read.fasta("reference/Arthropoda_12S_rdp_species.fa",strip.desc = TRUE, as.string = FALSE)
+names_species_12s <- getAnnot(species_12S)
+
+##Save final species level merged reference DB
+write.fasta(c(species_COI, species_18S,species_12S ), c(names_species_COI,names_species_18s,names_species_12s), "reference/merged_arthropoda_rdp_species.fa", as.string=FALSE, nbchar=5000)
+
+```
+
