@@ -348,34 +348,74 @@ saveRDS(ps, "output/rds/ps_final.rds")
 ps <- readRDS("output/rds/ps_final.rds")
 
 dir.create("output/csv")
+dir.create("output/csv/unfiltered/")
+dir.create("output/csv/filtered/")
+dir.create("output/csv/seperategenes/")
+
+##Define helper functions
+
+#Function to transform data to proportions
+proportions = function(x){
+  xprop = (x / sum(x))
+  return(xprop)
+}
+
+##Function to transform data to proportions and set low proportions to zero
+filterfun = function(x){
+  xprop = (x / sum(x)) #Convert to proportions
+  xprop[xprop < (1e-4)] <- 0 ## remove taxa under 0.0001, which is 0.01%
+  return(xprop)
+}
+
 
 ##Export raw csv
 export <- psmelt(ps)
-write.csv(export, file = "output/csv/rawdata.csv")
+write.csv(export, file = "output/csv/unfiltered/rawdata.csv")
 
 #Subset data to Athropoda only & Export CSV
 ps1 = subset_taxa(ps, Phylum == "Arthropoda") 
 export <- psmelt(ps1)
-write.csv(export, file = "output/csv/raw_arthropoda.csv")
+write.csv(export, file = "output/csv/unfiltered/raw_arthropoda.csv")
+
+#Agglomerate all OTUS and export summary table pre-filtering (for index switching figure)
+
+sum_spp <- summarize_taxa(ps1, "Species", "SampleID")
+sum_spp <- spread(sum_spp, key="SampleID", value="totalRA")
+write.csv(sum_spp, file = "output/csv/unfiltered/allgene_sppglom_unfiltered_summarized.csv")
+
+sum_gen <- summarize_taxa(ps1, "Genus", "SampleID")
+sum_gen <- spread(sum_gen, key="SampleID", value="totalRA")
+write.csv(sum_gen, file = "output/csv/unfiltered/allgene_genglom_unfiltered_summarized.csv")
+
 
 #Convert arthropod data to proportions and apply filter threshold
 psFR <- transform_sample_counts(ps1, fun = filterfun)
 psFR <- transform_sample_counts(ps1, fun = proportions)
 ##Export filtered data
 export <- psmelt(psFR)
-write.csv(export, file = "output/csv/allgene_arthropoda_filt.csv")
+write.csv(export, file = "output/csv/filtered/allgene_arthropoda_filt.csv")
 
-#Agglomerate all OTUS by species level taxonomy and export
+#Agglomerate all filtered OTUS by species & Genus level taxonomy and export
 rm_c1 <-  c("Pool-C1-250","Pool-C2-250","Pool-C3-250","Pool-C4-250","Pool-C5-250")
 spp_level <- subset_samples(psFR, sample_names(psFR)!=rm_c1)
 spp_level = tax_glom(spp_level, "Species", NArm = TRUE)
 sppexport <- psmelt(spp_level)
-write.csv(sppexport, file = "output/csv/allgene_sppglom_filt.csv")
+write.csv(sppexport, file = "output/csv/filtered/allgene_sppglom_filt.csv")
 
-#Agglomerate all OTUS by species level taxonomy, then create summary table and export
-sum_filt <- summarize_taxa(psFR, "Species", "SampleID")
-sum_filt <- spread(sum_filt, key="SampleID", value="totalRA")
-write.csv(sum_filt, file = "output/csv/allgene_sppglom_filt_summarized.csv")
+gen_level <- subset_samples(psFR, sample_names(psFR)!=rm_c1)
+gen_level = tax_glom(gen_level, "Genus", NArm = TRUE)
+genexport <- psmelt(gen_level)
+write.csv(genexport, file = "output/csv/filtered/allgene_genglom_filt.csv")
+
+#Agglomerate all filtered OTUS by species level taxonomy, then create summary table and export
+sum_spp_filt <- summarize_taxa(psFR, "Species", "SampleID")
+sum_spp_filt <- spread(sum_spp_filt, key="SampleID", value="totalRA")
+write.csv(sum_spp_filt, file = "output/csv/filtered/allgene_sppglom_filt_summarized.csv")
+
+sum_gen_filt <- summarize_taxa(psFR, "Species", "SampleID")
+sum_gen_filt <- spread(sum_gen_filt, key="SampleID", value="totalRA")
+write.csv(sum_gen_filt, file = "output/csv/filtered/allgene_genglom_filt_summarized.csv")
+
 
 ```
 
@@ -422,9 +462,6 @@ pstemp <- transform_sample_counts(pstemp, fun = filterfun) #Apply filter threhso
 #Drop Kingdom column so we have 3 genes merged 
 tax_table(pstemp) <- tax_table(pstemp)[,2:7]
 
-
-#export <- psmelt(psFR)
-#write.csv(export, file = "filtered.csv")
 
 ##Plot mock communties
 psmock = subset_samples(pstemp, biome == "Laboratory")
@@ -523,8 +560,6 @@ my_heatmap_order = order(RadialTheta(glom_ordinate$species))
 
 # Supplementary Figures - Plot each gene seperately
 
-NEED TO CHECK, IS THIS CURRENTLY USING THE FILTERED DATA???
-
 ```{r Seperate genes}
 
 positions = c('Pool-01-100', 'Pool-02-100', 'Pool-03-100', 'Pool-04-100', 'Pool-05-100', 'Pool-06-500', 'Pool-07-500', 'Pool-08-500', 'Pool-09-500', 'Pool-10-500', 'Pool-11-1000', 'Pool-12-1000', 'Pool-13-1000', 'Pool-14-1000', 'Pool-15-1000', 'Pool-U1-250', 'Pool-U2-250', 'Pool-U3-250', 'Pool-U4-250', 'Pool-U5-250', 'Trap-01', 'Trap-02', 'Trap-03', 'Trap-04', 'Trap-05', 'Trap-06', 'Trap-07', 'Trap-08', 'Trap-09', 'Trap-10')
@@ -536,7 +571,7 @@ genes <- genes[!is.na(genes)]
 for (i in seq(along=genes)){
   ####PROBLEM HERE WILL BE THE MOCKS!
 print(genes[i])
-ps_gene = subset_taxa(ps, Kingdom == genes[i])
+ps_gene = subset_taxa(psFR, Kingdom == genes[i])
 ps_gene = subset_taxa(ps_gene, Phylum == "Arthropoda")
 
 ps_genexp <- merge_phyloseq(ps_gene, ps_exp)
@@ -546,7 +581,11 @@ tax_table(ps_genexp) <- tax_table(ps_genexp)[,2:7]
 summary <-  subset_samples(ps_genexp, experimental_factor == "O")
 sp_summary <- summarize_taxa(summary, "Species", "SampleID")
 sp_summary <- spread(sp_summary, key="SampleID", value="totalRA")
-write.csv(sp_summary, file = paste0("output/csv/",genes[i],"_sppglom_filt_summarized.csv"))
+write.csv(sp_summary, file = paste0("output/csv/seperategenes/",genes[i],"_sppglom_filt_summarized.csv"))
+
+gen_summary <- summarize_taxa(summary, "Species", "SampleID")
+gen_summary <- spread(gen_summary, key="SampleID", value="totalRA")
+write.csv(gen_summary, file = paste0("output/csv/seperategenes/",genes[i],"_genglom_filt_summarized.csv"))
 
 ##Transform data to proportions and set low proportions to zero - NEEDED TO REMOVE INDEX SWITCHING
 

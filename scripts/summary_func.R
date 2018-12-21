@@ -73,16 +73,3 @@ summarize_taxa = function(physeq, Rank, GroupBy = NULL){
                   by = c(Rank, GroupBy)]
   return(summarydt)
 }
-
-#Function to transform data to proportions
-proportions = function(x){
-  xprop = (x / sum(x))
-  return(xprop)
-}
-
-##Function to transform data to proportions and set low proportions to zero
-filterfun = function(x){
-  xprop = (x / sum(x)) #Convert to proportions
-  xprop[xprop < (1e-4)] <- 0 ## remove taxa under 0.0001, which is 0.01%
-  return(xprop)
-}
