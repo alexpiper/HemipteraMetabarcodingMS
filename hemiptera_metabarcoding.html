@@ -329,6 +329,7 @@ ACCTAGAAAGTCGTAGATCGAAGTTGAAGCATCGCCCGATGATCGTCTGAAGCTGTAGCATGAGTCGATTTTCACATTCA
 <pre class="code"><code>&gt; ID Genus species
 ACCTAGAAAGTCGTAGATCGAAGTTGAAGCATCGCCCGATGATCGTCTGAAGCTGTAGCATGAGTCGATTTTCACATTCAGGGATACCATAGGATAC</code></pre>
 <p>While the creators of DADA2 maintain formatted reference data for 16S and ITS regions, for the genes used in this study (COI, 18S, 12S) this database will need to be assembled and curated prior to beginning this workflow. This has been done within the associated Reference_builder.Rmd file</p>
+<p>To see an overview of the reference database assembled for this study, <a href="https://alexpiper.github.io/HemipteraMetabarcodingMS/reference/Ref_DB_Krona.html">click here</a></p>
 <p>#Remove primers</p>
 <p>DADA2 requires Non-biological nucleotides i.e. primers, adapters, linkers, etc to be removed. Prior to begining this workflow, samples were demultiplexed and illumina adapters were removed by the MiSeq software, however primer sequences still remain in the reads and must be removed prior to use with the DADA2 algorithm.</p>
 <p>In this study there were 3 amplicons of different size generated in a multiplexed PCR. While COI should only contain the 5’ primer, the 12S and 18S genes are length variable, and therefore may contain 3’ primer sequences in addition to the 5’primer.</p>

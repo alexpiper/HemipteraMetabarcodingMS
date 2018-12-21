@@ -58,6 +58,7 @@ ACCTAGAAAGTCGTAGATCGAAGTTGAAGCATCGCCCGATGATCGTCTGAAGCTGTAGCATGAGTCGATTTTCACATTCA
 ```
 While the creators of DADA2 maintain formatted reference data for 16S and ITS regions, for the genes used in this study (COI, 18S, 12S) this database will need to be assembled and curated prior to beginning this workflow. This has been done within the associated Reference_builder.Rmd file
 
+To see an overview of the reference database assembled for this study, [click here](https://alexpiper.github.io/HemipteraMetabarcodingMS/reference/Ref_DB_Krona.html)
 
 
 #Remove primers
