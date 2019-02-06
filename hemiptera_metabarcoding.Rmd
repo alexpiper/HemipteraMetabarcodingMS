@@ -314,13 +314,92 @@ saveRDS(tax_plus, "output/rds/tax_boot80_final.rds")
 ```
 
 
+
+
+## ALTERNATIVE - Assign taxonomy with IDTAXA
+
+IDTAXA
+
+
+```{r IDTAXA}
+library(DECIPHER); packageVersion("DECIPHER")
+
+seqtab.nochim <- readRDS("output/rds/seqtab_final.rds")
+trainingSet <- readRDS("reference/merged_arthropoda_idtaxa.rds")
+
+dna <- DNAStringSet(getSequences(seqtab.nochim)) # Create a DNAStringSet from the ASVs
+
+##Decide on threshold
+ids <- IdTaxa(dna, trainingSet, strand="top", processors=1,threshold = 60, verbose=TRUE) # use all processors
+
+##Write out IDs file
+
+#delete existing file
+cat("",file="idtaxa.csv")
+for (i in 1:length(ids)){
+ lines <- as.data.table(t(cbind(ids[[i]]$taxon,ids[[i]]$confidence)))
+ rownames(lines) <- c("taxa","confidence")
+write.table(lines,file="idtaxa.csv",sep=",",append=TRUE, col.names=FALSE)
+}
+
+ranks <-  c("Root","Kingdom", "Phylum","Class", "Order", "Family", "Genus", "Species") # ranks of interest
+# Convert the output object of class "Taxa" to a matrix analogous to the output from assignTaxonomy
+taxid <- t(sapply(ids, function(x) {
+        taxa <- x$taxon
+        taxa[startsWith(taxa, "unclassified_")] <- NA
+        taxa
+}))
+
+library(stringi)
+taxid <- stri_list2matrix(lapply(taxid, unlist), byrow=TRUE, fill="NA")
+taxid[startsWith(taxid, "NA")] <- NA
+
+#Add sequences and column names to matrix
+colnames(taxid) <- ranks; rownames(taxid) <- getSequences(seqtab.nochim)
+
+#Subset to remove the root rank
+taxid <- subset(taxid, select=c("Kingdom", "Phylum","Class", "Order", "Family", "Genus", "Species"))
+
+#Name object the same as the output of addSpecies
+tax_plus <- taxid
+
+##Add unclassified to species rank for those with only a genus rank assignmnet
+#for(col in seq(6,ncol(tax_plus))) {
+#  propagate <- is.na(tax_plus[,col]) & !is.na(tax_plus[,col-1])
+#  tax_plus[propagate,col:ncol(tax_plus)] <- paste(tax_plus[propagate,col-1], "unclassified", sep="_")
+#}
+
+##Add SP. to species rank for those with only a genus rank assignmnet
+for(col in seq(7,ncol(tax_plus))) { 
+  propagate <- is.na(tax_plus[,col]) & !is.na(tax_plus[,col-1])
+  tax_plus[propagate,col:ncol(tax_plus)] <-  "spp."
+}
+
+##join genus and species name in species rank column
+sptrue <- startsWith(tax_plus[,7], "spp.") %>% 
+  tidyr::replace_na(FALSE)
+tax_plus[sptrue,7] <- paste(tax_plus[sptrue,6],tax_plus[sptrue,7], sep="_")
+
+#Check Output
+taxa.print <- tax_plus # Removing sequence rownames for display only
+rownames(taxa.print) <- NULL
+head(taxa.print)
+
+# Write taxonomy table to disk
+saveRDS(tax_plus, "output/rds/tax_IdTaxa_final.rds") 
+
+```
+
+
 ## Make phyloseq 
 
 Following taxonomic assignment, both the sequence table and taxonomic table are passed to the Phyloseq R package for further community analysis and visualisation of data. This involves loading in the sample info csv to merge with the sequence and taxonomy tables
 
 ```{r create PS, eval = FALSE}
 seqtab.nochim <- readRDS("output/rds/seqtab_final.rds")
-tax_plus <- readRDS("output/rds/tax_boot80_final.rds") 
+#tax_plus <- readRDS("output/rds/tax_boot80_final.rds") 
+tax_plus <- readRDS("output/rds/tax_IdTaxa_final.rds") 
+#tax_plus <- readRDS("output/rds/tax_blast_final.rds") 
 
 #Load sample information
 ## ---- samdat ----
@@ -339,14 +418,18 @@ head(samdf)
 ps <- phyloseq(tax_table(tax_plus), sample_data(samdf),
                otu_table(seqtab.nochim, taxa_are_rows = FALSE))
 ##save phyloseq object
-saveRDS(ps, "output/rds/ps_final.rds") 
+#saveRDS(ps, "output/rds/ps_final.rds") 
+saveRDS(ps, "output/rds/ps_idtaxa.rds") 
+#saveRDS(ps, "output/rds/ps_blast.rds") 
 ```
 
 
 ## Output tables of results
 
 ```{r output table, eval = FALSE}
-ps <- readRDS("output/rds/ps_final.rds")
+#ps <- readRDS("output/rds/ps_final.rds")
+ps <- readRDS("output/rds/ps_idtaxa.rds")
+#ps <- readRDS("output/rds/ps_blast.rds")
 
 dir.create("output/csv")
 dir.create("output/csv/unfiltered/")
@@ -391,7 +474,8 @@ write.csv(sum_gen, file = "output/csv/unfiltered/allgene_genglom_unfiltered_summ
 
 #Convert arthropod data to proportions and apply filter threshold
 psFR <- transform_sample_counts(ps1, fun = filterfun)
-psFR <- transform_sample_counts(ps1, fun = proportions)
+psFR <- transform_sample_counts(psFR, fun = proportions)
+psFR = filter_taxa(psFR, function(x) mean(x) > 0, TRUE) #Drop missing
 ##Export filtered data
 export <- psmelt(psFR)
 write.csv(export, file = "output/csv/filtered/allgene_arthropoda_filt.csv")
@@ -455,10 +539,12 @@ dir.create("output/figs")
 
 positions = c('Pool-01-100', 'Pool-02-100', 'Pool-03-100', 'Pool-04-100', 'Pool-05-100', 'Pool-06-500', 'Pool-07-500', 'Pool-08-500', 'Pool-09-500', 'Pool-10-500', 'Pool-11-1000', 'Pool-12-1000', 'Pool-13-1000', 'Pool-14-1000', 'Pool-15-1000', 'Pool-U1-250', 'Pool-U2-250', 'Pool-U3-250', 'Pool-U4-250', 'Pool-U5-250', 'Trap-01', 'Trap-02', 'Trap-03', 'Trap-04', 'Trap-05', 'Trap-06', 'Trap-07', 'Trap-08', 'Trap-09', 'Trap-10')
 
-#Merge in expecteds 
-pstemp <- merge_phyloseq(ps1, ps_exp)
-pstemp <- transform_sample_counts(pstemp, fun = filterfun) #Apply filter threhsold
+positions_exp = c('Pool-01-100','Pool-01-100-exp',  'Pool-02-100','Pool-02-100-exp', 'Pool-03-100','Pool-03-100-exp', 'Pool-04-100','Pool-04-100-exp', 'Pool-05-100','Pool-05-100-exp', 'Pool-U1-250','Pool-U1-250-exp', 'Pool-U2-250','Pool-U2-250-exp', 'Pool-U3-250','Pool-U3-250-exp', 'Pool-U4-250','Pool-U4-250-exp', 'Pool-U5-250','Pool-U5-250-exp', 'Pool-06-500','Pool-06-500-exp', 'Pool-07-500','Pool-07-500-exp', 'Pool-08-500','Pool-08-500-exp', 'Pool-09-500','Pool-09-500-exp', 'Pool-10-500','Pool-10-500-exp', 'Pool-11-1000','Pool-11-1000-exp', 'Pool-12-1000','Pool-12-1000-exp', 'Pool-13-1000','Pool-13-1000-exp', 'Pool-14-1000','Pool-14-1000-exp', 'Pool-15-1000','Pool-15-1000-exp')
 
+#Merge in expecteds 
+pstemp <- merge_phyloseq(psFR, ps_exp)
+pstemp <- transform_sample_counts(pstemp, fun = proportions)
+#pstemp = filter_taxa(pstemp, function(x) mean(x) > 0, TRUE) #Drop missing
 
 #Drop Kingdom column so we have 3 genes merged 
 tax_table(pstemp) <- tax_table(pstemp)[,2:7]
@@ -475,7 +561,7 @@ psmock = tax_glom(psmock, "Species", NArm = TRUE)
 psmock <- transform_sample_counts(psmock, fun= proportions) # Reset scale to 1 following NArm
 
 mdf <- psmelt(psmock)
-p <- ggplot(mdf, aes_string(x= "SampleID", y="Abundance", fill= "Genus" ))
+p <- ggplot(mdf, aes(x= SampleID, y=Abundance,fill= Genus))
 p = p + geom_bar(stat = "identity", position = "stack", color = "NA")  
 p = p + theme(axis.text.x = element_text(angle = -90, hjust = 0))
 p = p + ggtitle(paste0("Relative abundance of taxa for all genes in mock communities"))
@@ -483,6 +569,9 @@ p = p + xlab("Mock Community")
 p = p + scale_fill_brewer(palette="RdYlBu")
 p = p + theme_pubclean()
 p1 = p + facet_wrap(feature~sample_name, drop=TRUE, scales="free_x") + xlab("feature")+ theme(axis.text.x = element_blank())
+
+p5 =  p + scale_x_discrete(limits = positions_exp) + coord_flip()
+
 
 psreal = subset_samples(pstemp, experimental_factor != "Exp")
 psreal <- subset_samples(psreal, sample_names(psreal)!=rm_c1)
@@ -523,6 +612,7 @@ p4 <- ggplot(summarydt, aes(Kingdom, Species)) + geom_tile(aes(fill = totalRA),
 
 pdf(file= "output/figs/allgenes_plots.pdf", paper="a4")
 plot(p1)
+plot(p5)
 plot(p2)
 plot(p3)
 plot(p4)
