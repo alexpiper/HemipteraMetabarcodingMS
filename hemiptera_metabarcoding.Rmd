@@ -429,6 +429,13 @@ filterfun = function(x){
 export <- psmelt(ps)
 write.csv(export, file = "output/csv/unfiltered/rawdata.csv")
 
+#Agglomerate all OTU's to Gene level and export proportions - For supplementary table
+sum_gene <- transform_sample_counts(ps, fun = proportions)
+sum_gene <- summarize_taxa(sum_gene, "Gene", "SampleID")
+sum_gene <- spread(sum_gene, key="SampleID", value="totalRA")
+
+write.csv(sum_gene, file = "output/csv/unfiltered/gene_summarized.csv")
+
 #Subset data to Athropoda only & Export CSV
 ps1 = subset_taxa(ps, Phylum == "Arthropoda") 
 export <- psmelt(ps1)
@@ -443,7 +450,6 @@ write.csv(sum_spp, file = "output/csv/unfiltered/allgene_sppglom_unfiltered_summ
 sum_gen <- summarize_taxa(ps1, "Genus", "SampleID")
 sum_gen <- spread(sum_gen, key="SampleID", value="totalRA")
 write.csv(sum_gen, file = "output/csv/unfiltered/allgene_genglom_unfiltered_summarized.csv")
-
 
 #Convert arthropod data to proportions and apply filter threshold
 psFR <- transform_sample_counts(ps1, fun = filterfun)
@@ -556,6 +562,35 @@ p2 = p + facet_wrap(.~experimental_factor, drop=TRUE, scales="free")  + coord_fl
 #plot obs/exp seperated 2 rows
 p3 = p + facet_wrap(~experimental_factor, nrow=2,ncol=1,drop=TRUE, scales="free") + coord_flip()
 
+##Calculate observed vs expected
+#pseudocode
+
+psgen = tax_glom(psmock, "Genus", NArm = TRUE)
+psgen <- transform_sample_counts(psgen, fun= proportions) # Reset scale to 1 following NArm
+psgen <- psmelt(psgen)
+
+
+mock_exp <- psgen %>%
+  filter(experimental_factor=="Exp") %>%
+  subset(select=c("Abundance","Sample","Genus"))
+mock_exp$Sample <-str_remove(mock_exp$Sample,pattern="-exp")
+colnames(mock_exp) <- c("Expected","Sample","Genus")
+
+mock_obs <- psgen %>%
+  filter(experimental_factor=="O") %>%
+  subset(select=c("Abundance","Sample","Genus"))
+colnames(mock_obs) <- c("Observed","Sample","Genus")
+
+expobs <- left_join(mock_exp,mock_obs, by=c("Sample","Genus")) %>%
+  filter(Observed>0)
+
+g <- ggplot(expobs,aes(x=Expected,y=Observed)) + geom_point(aes(colour=Genus)) + geom_smooth(method="lm",se=FALSE,aes(color=Genus))
+#+facet_grid(~Genus, scales="free")
+
+#Get pearsons correlation 
+
+
+
 
 #Figure 2 - All detecctions
 
@@ -602,7 +637,6 @@ pdf(file= "output/figs/allgenes_plots.pdf", paper="a4")
 plot(p1)
 plot(p2)
 plot(p3)
-plot(p4)
 plot(ggarrange(pname,p5,p4,nrow=1,ncol=3,widths = c(1,4,5),align="h"))
 dev.off()
 
