@@ -563,12 +563,9 @@ p2 = p + facet_wrap(.~experimental_factor, drop=TRUE, scales="free")  + coord_fl
 p3 = p + facet_wrap(~experimental_factor, nrow=2,ncol=1,drop=TRUE, scales="free") + coord_flip()
 
 ##Calculate observed vs expected
-#pseudocode
-
 psgen = tax_glom(psmock, "Genus", NArm = TRUE)
 psgen <- transform_sample_counts(psgen, fun= proportions) # Reset scale to 1 following NArm
 psgen <- psmelt(psgen)
-
 
 mock_exp <- psgen %>%
   filter(experimental_factor=="Exp") %>%
@@ -584,15 +581,16 @@ colnames(mock_obs) <- c("Observed","Sample","Genus")
 expobs <- left_join(mock_exp,mock_obs, by=c("Sample","Genus")) %>%
   filter(Observed>0)
 
-g <- ggplot(expobs,aes(x=Expected,y=Observed)) + geom_point(aes(colour=Genus)) + geom_smooth(method="lm",se=FALSE,aes(color=Genus))
-#+facet_grid(~Genus, scales="free")
+g <- ggplot(expobs,aes(x=Expected,y=Observed)) + geom_point(aes(colour=Genus)) + geom_abline(slope=1, intercept = 0) +
+  geom_segment(aes(xend = Expected, yend = Observed)) +
+  stat_cor(aes(color = Genus), label.x = 0.1)  + xlim(0,1) + ylim(0,1) + scale_colour_manual(values=c("#0c4687","#ae0707","#fa6e24","#3a9e82","#95cf77")) + theme_pubr() + theme(legend.position = "none") 
 
-#Get pearsons correlation 
+##Get differences 
+expobs$bias <- expobs$Observed - expobs$Expected 
 
+g2 <- ggplot(expobs,aes(x=Genus,y=bias)) + geom_bar(aes(fill=Genus),stat = "summary", fun.y = "mean") + geom_abline(slope=0, intercept = 0) + scale_fill_manual(values=c("#0c4687","#ae0707","#fa6e24","#3a9e82","#95cf77")) + theme_pubr() #+ coord_flip()
 
-
-
-#Figure 2 - All detecctions
+#geom_smooth(method="lm",se=FALSE,aes(color=Genus),fullrange=TRUE) 
 
 #Drop Kingdom column so we have 3 genes merged 
 psglom <- psFR
@@ -637,6 +635,8 @@ pdf(file= "output/figs/allgenes_plots.pdf", paper="a4")
 plot(p1)
 plot(p2)
 plot(p3)
+plot(g)
+plot(g2)
 plot(ggarrange(pname,p5,p4,nrow=1,ncol=3,widths = c(1,4,5),align="h"))
 dev.off()
 
@@ -715,15 +715,49 @@ p1 =  p + facet_wrap(~experimental_factor, drop=TRUE, scales="free")  + coord_fl
 #plot obs/exp seperated 2 rows
 p2 = p + facet_wrap(~experimental_factor, nrow=2,ncol=1,drop=TRUE, scales="free") + coord_flip() 
 
+#Plot Heatmap
 psreal_gene = subset_samples(psra_gene, experimental_factor != "Exp")
 psreal_gene <- subset_samples(psreal_gene, sample_names(psreal_gene)!=rm_c1)
 
 psglom = tax_glom(psreal_gene, "Species", NArm = TRUE)
 p3 <- plot_heatmap(psglom, "NMDS", "bray", taxa.label="Species", title= paste0(genes[i]," Heatmap Species level"), taxa.order="Family") + theme_pubr()  + scale_x_discrete(limits = positions) + theme(axis.text.x = element_text(angle=60, hjust=1), axis.title.x=element_blank(), axis.title.y=element_blank(), legend.position="none") + scale_fill_viridis(trans=log_trans(10), na.value="grey10") 
 
+#Plot correlations
+
+##Calculate observed vs expected
+psgen = tax_glom(psmock, "Genus", NArm = TRUE)
+psgen <- transform_sample_counts(psgen, fun= proportions) # Reset scale to 1 following NArm
+psgen <- psmelt(psgen)
+
+mock_exp <- psgen %>%
+  filter(experimental_factor=="Exp") %>%
+  subset(select=c("Abundance","Sample","Genus"))
+mock_exp$Sample <-str_remove(mock_exp$Sample,pattern="-exp")
+colnames(mock_exp) <- c("Expected","Sample","Genus")
+
+mock_obs <- psgen %>%
+  filter(experimental_factor=="O") %>%
+  subset(select=c("Abundance","Sample","Genus"))
+colnames(mock_obs) <- c("Observed","Sample","Genus")
+
+expobs <- left_join(mock_exp,mock_obs, by=c("Sample","Genus")) %>%
+  filter(Observed>0)
+
+g <- ggplot(expobs,aes(x=Expected,y=Observed)) + geom_point(aes(colour=Genus)) + geom_abline(slope=1, intercept = 0) +
+  geom_segment(aes(xend = Expected, yend = Observed)) +
+  stat_cor(aes(color = Genus), label.x = 0.1)  + xlim(0,1) + ylim(0,1) + scale_colour_manual(values=c("#0c4687","#ae0707","#fa6e24","#3a9e82","#95cf77")) + theme_pubr() + theme(legend.position = "none") 
+
+##Get differences 
+expobs$bias <- expobs$Observed - expobs$Expected 
+
+g2 <- ggplot(expobs,aes(x=Genus,y=bias)) + geom_bar(aes(fill=Genus),stat = "summary", fun.y = "mean") + geom_abline(slope=0, intercept = 0) + scale_fill_manual(values=c("#0c4687","#ae0707","#fa6e24","#3a9e82","#95cf77")) + theme_pubr() #+ coord_flip()
+
+
 pdf(file= paste0("output/figs/",genes[i],"_plots.pdf"), paper="a4")
 plot(p1)
 plot(p2)
+plot(g)
+plot(g2)
 plot(p3)
 dev.off()
 }
