@@ -206,7 +206,7 @@ Sequences need to be trimmed to primer regions, as there are millions of sequenc
 
 ```{r process genbank sequences}
 
-output <- "Arthropoda_COI"           ##name to add to output sequences
+output <- "Arthropoda_COI"     ##name to add to output sequences
 
 ##Get taxonomy
 taxaNodes<-read.nodes('nodes.dmp')
@@ -349,7 +349,6 @@ if (i < chunks){
   message(paste("Warning: Less sequences than expected, attempt download again"))
 }
 
-
 wolb_uniq <- read.fasta(paste0("reference/",output,"_wolbachia_loci.fasta"),strip.desc = FALSE, as.string = FALSE) 
 wolb_uniq <- unique(wolb_uniq)
 names_wolb_uniq <- getName(wolb_uniq)
@@ -374,7 +373,6 @@ wolbachia_filt <- fread("wolbachia_out.csv")
 wolb <- wolbachia_filt$V1
 wolb <- paste0(">",wolb)
 
-
 wolb_filtered <- filtered_1[!getAnnot(filtered_1) %in% wolb]
 message(paste((length(filtered_1)- length(wolb_filtered)), "sequences removed")) 
 names_wolb_filtered <- getName(wolb_filtered)
@@ -382,22 +380,19 @@ write.fasta(wolb_filtered, names_wolb_filtered, paste0("reference/",output,"_tem
 
 rem <- paste0("reference/",output,"_tempfilt1.fa")
 if (file.exists(rem)) file.remove(rem)
-
 ```
 
 
 ## Filter taxanomically mislabelled sequences
 
-The third filter applied was to remove any taxonomically mislabelled sequnces
-
-This was achieved by clustering the sequences at 99% and flagging any clusters that contained more than one order
+The third filter applied was to remove any taxonomically mislabelled sequnces. This was achieved by clustering the sequences at 99% and flagging any clusters that contained more than one order
 
 ```{bash}
 #Sumaclust was then used on the file
 /home/ap0y/sumaclust_v1.0.31/sumaclust -t 0.99 Arthropoda_COI_tempfilt2.fa > clustered_99%.fa
 ```
 
-
+Following clustering, the output was fed back into R to identify clusters containing putatively mislabelled sequences
 ```{r post clustering}
 #read in Sumaclust clustered file & get headers 
 clustered<- read.fasta("clustered_99%.fa",strip.desc = FALSE, as.string = FALSE)  # default is DNA; add ", seqtype = "AA" for protein
@@ -424,6 +419,8 @@ write.csv(mis_annot, file=paste0("reference/",output,"_mis_annot.csv"))
 
 The flagged clusters were then manually explored using a blast against the NCBI nucleotide databse and the tree functionality, and the ID's of putatively mislabelled sequences entered in the "remove_seq.txt" file for removal from dataset 
 
+# NEED TO TEST BELOW CODE
+
 ```{r }
 remove_seq <- readLines(con = "reference/remove_seq.txt")
 pre_cluster<- read.fasta(paste0("reference/",output,"_tempfilt2.fa"),strip.desc = FALSE, as.string = FALSE)  # default is DNA; add ", seqtype = "AA" for protein
@@ -434,17 +431,35 @@ remove_rows <- remove_rows[,1]
 mis_filtered <- pre_cluster[!remove_rows %in% remove_seq]
 message(paste((length(pre_cluster)- length(mis_filtered)), "mis-annotated sequences removed")) 
 
-##Write this out
+#merge in our sequences - is there a better way to do this rather than writing out?
 
-mis_filtered_annot <- getName(mis_filtered)
-write.fasta(mis_filtered, mis_filtered_annot, paste0("reference/",output,"_tempfilt3.fa"))
-rm(mis_filtered, mis_filtered_annot,mis_filtered_annot,pre_cluster,name_filtered)
+inhouse <- read.fasta("COI_inhouse.fa",strip.desc = FALSE, as.string = FALSE)  # default is DNA; add ", seqtype = "AA" for protein
+name_inhouse <- getName(rdp_inhouse)
 
+write.fasta(c(mis_filtered, inhouse), c(getName(mis_filtered),getName(rdp_inhouse)), paste0("reference/",output,"tempfilt3.fa"), as.string=FALSE, nbchar=5000)
+
+#Remove temp file
 rem <- paste0("reference/",output,"_tempfilt2.fa")
 if (file.exists(rem)) file.remove(rem)
-```
 
-# merge genes together
+#Read back in merged fasta
+seqs <- read.fasta(paste0("reference/",output,"tempfilt3.fa"),strip.desc = FALSE, as.string = FALSE)  # default is DNA; add ", seqtype = "AA" for
+
+#Below script could be better done with a gsub command - All we are trying to do is replace the first level with the gene
+names <- getName(seqs)
+
+#Try below
+gsub("(.*)(Eukaryota;)", "\\2", names)
+
+#add loci name to first level of 
+names_loci <- paste0("Root;",bold_loci,"_",names)
+
+write.fasta(seqs, names_loci ,  paste0("reference/",output,".fa"), as.string=FALSE, nbchar=5000)
+
+#Remove temp file
+rem <- paste0("reference/",output,"_tempfilt3.fa")
+if (file.exists(rem)) file.remove(rem)
+```
 
 
 ## Merge 3 genes together into final DB
@@ -453,223 +468,21 @@ All above steps were conducted for the COI, 18S and 12S genes targetted in this 
 
 ```{r merge genes}
 
-##GENUS
-
-#merge 3 genes
-
-genus_COI <- read.fasta("reference/Arthropoda_COI_rdp_genus.fa",strip.desc = FALSE, as.string = FALSE)
-names_genus_COI <- getName(genus_COI)
-genus_18S <- read.fasta("reference/Arthropoda_18S_rdp_genus.fa",strip.desc = FALSE, as.string = FALSE)
-names_genus_18s <- getName(genus_18S)
-genus_12S <- read.fasta("reference/Arthropoda_12S_rdp_genus.fa",strip.desc = FALSE, as.string = FALSE)
-names_genus_12s <- getName(genus_12S)
+db_COI <- read.fasta("reference/Arthropoda_COI.fa",strip.desc = FALSE, as.string = FALSE)
+db_18S <- read.fasta("reference/Arthropoda_18S.fa",strip.desc = FALSE, as.string = FALSE)
+db_12S <- read.fasta("reference/Arthropoda_12S.fa",strip.desc = FALSE, as.string = FALSE)
 
 ## Write merged genus fasta
-write.fasta(c(genus_COI, genus_18S,genus_12S ), c(names_genus_COI,names_genus_18s,names_genus_12s), "reference/merged_arthropoda_rdp_genus.fa", as.string=FALSE, nbchar=5000)
-
-##Remove _ after loci and write final genus level fasta
-genus_merged <- read.fasta("reference/merged_arthropoda_rdp_genus.fa",strip.desc = FALSE, as.string = FALSE)
-names_all <- getName(genus_merged)
-names_all <- str_replace_all(names_all,"_","-")
-names_all <- str_replace_all(names_all,"-5P","")
-
-write.fasta(genus_merged,names_all,"reference/merged_arthropoda_rdp_genus.fa", as.string=FALSE, nbchar=5000)
-
-##Species
-
-#merge 3 genes
-species_COI <- read.fasta("reference/Arthropoda_COI_rdp_species.fa",strip.desc = TRUE, as.string = FALSE)
-names_species_COI <- getAnnot(species_COI)
-species_18S <- read.fasta("reference/Arthropoda_18S_rdp_species.fa",strip.desc = TRUE, as.string = FALSE)
-names_species_18s <- getAnnot(species_18S)
-species_12S <- read.fasta("reference/Arthropoda_12S_rdp_species.fa",strip.desc = TRUE, as.string = FALSE)
-names_species_12s <- getAnnot(species_12S)
-
-##Save final species level merged reference DB
-write.fasta(c(species_COI, species_18S,species_12S ), c(names_species_COI,names_species_18s,names_species_12s), "reference/merged_arthropoda_rdp_species.fa", as.string=FALSE, nbchar=5000)
+write.fasta(c(genus_COI, genus_18S,genus_12S ), c(getName(genus_12S),getName(genus_12S),getName(genus_12S)), "reference/merged_arthropoda.fa", as.string=FALSE, nbchar=5000)
 
 ```
 
-# Prune excess sequences from groups
-# How is this working with the 3 genes - is it being split???
+# Prune sequences & Train IDTaxa classfier
 
-At this stage the dataset was trimmed to remove unnecesary clusters
-```{r trim dataset}
-
-# specify the path to your file of training sequences:
-seqs_path <- "reference/merged_arthropoda_idtaxa_renamed.fa"
-# read the sequences into memory
-seqs <- readDNAStringSet(seqs_path)
-
-# As taxonomies are encoded in the sequence names rather than a separate file, use:
-taxid <- NULL
-seqs <- RemoveGaps(seqs)
-seqs <- OrientNucleotides(seqs)
-
-# obtain the taxonomic assignments
-groups <- names(seqs) # sequence names
-
-
-##Write out seqs here,
-
-##read in seqs again?
-
-# assume the taxonomy begins with 'Eukaryota;' 
-groups <- gsub("(.*)(Eukaryota;)", "\\2", groups) # extract the group label - May need to use a wild card for the root label as its split by 3 genes!
-groupCounts <- table(groups)
-u_groups <- names(groupCounts) # unique groups
-length(u_groups) # number of groups
- 
-##Prune group size down to 10 sequences each to keep the data manageable
-  
-  maxGroupSize <- 10 # max sequences per label (>= 1)
-  remove <- logical(length(seqs))
-  for (i in which(groupCounts > maxGroupSize)) {
-    index <- which(groups==u_groups[i])
-    keep <- sample(length(index),
-                   maxGroupSize)
-    remove[index[-keep]] <- TRUE
-  }
-  
-  pruned_seqs <- seqs[!remove]
-  sum(remove)
-  
-  
-## Plot a krona of before and after
-  
-## Or maybe best to just do a summary, and then diffs between 2 summaries 
-  
-  
-#Make sure that pruning groups is pruning each gene separately
-
-
-  seqs_out <- names(seqs)%>%
-    str_replace_all(";",",")
-  write.table(seqs_out, file="seqs_out.csv",sep=",")
-
-  pruned_out <- names(pruned_seqs)%>%
-    str_replace_all(";",",")  
-  write.table(pruned_out, file="pruned_out.csv",sep=",")
-
-
-```
-
-
-## Create specific databases for each classifier
-
-dada2::assignTaxonomy expects a training fasta file in which the taxonomy corresponding to each sequence is encoded in the id line as below:
-
-```{code}
->Level1;Level2;Level3;Level4;Level5;Level6;
-ACCTAGAAAGTCGTAGATCGAAGTTGAAGCATCGCCCGATGATCGTCTGAAGCTGTAGCATGAGTCGATTTTCACATTCAGGGATACCATAGGATAC
-```
-
-For Species level assignment dada2::addSpecies expects a training fasta file  with the id line formatted as below:
-```{code}
-> ID Genus species
-ACCTAGAAAGTCGTAGATCGAAGTTGAAGCATCGCCCGATGATCGTCTGAAGCTGTAGCATGAGTCGATTTTCACATTCAGGGATACCATAGGATAC
-```
-
-Fasta files were reformatted to fit these expectations
-
-```{r creat database files}
-##Create Genus Fasta
-rdp_genus<- read.fasta(paste0("reference/",output,"_tempfilt3.fa"),strip.desc = FALSE, as.string = FALSE)  # default is DNA; add ", seqtype = "AA" for protein
-all_names <- getName(rdp_genus)
-names_genus <- str_split_fixed(all_names, ";", n=8)
-names_genus <- as.data.table(names_genus)
-names_genus <- subset(names_genus, select=c("V2","V3","V4","V5","V6","V7")) 
-#Collapse
-names_genus <- apply(names_genus, 1, paste, collapse=";")
-##Add bold_loci to first level of taxonomy
-names_genus <- paste0(bold_loci,"_",names_genus)
-
-#merge in our sequences
-##These sequences may still have primers included - should remove these
-rdp_inhouse <- read.fasta("COI_inhouse.fa",strip.desc = FALSE, as.string = FALSE)  # default is DNA; add ", seqtype = "AA" for protein
-names_rdp_inhouse <- getName(rdp_inhouse)
-names_inhouse_genus <- str_split_fixed(names_rdp_inhouse, ";", n=8)
-names_inhouse_genus <- as.data.table(names_inhouse_genus)
-names_inhouse_genus <- subset(names_inhouse_genus, select=c("V2","V3","V4","V5","V6","V7")) 
-#Collapse
-names_inhouse_genus <- apply(names_inhouse_genus, 1, paste, collapse=";")
-##Add bold_loci to first level of taxonomy
-names_inhouse_genus <- paste0(bold_loci,"_",names_inhouse_genus)
-
-##Save final genus level merged reference DB
-write.fasta(c(rdp_genus, rdp_inhouse), c(names_genus,names_inhouse_genus), paste0("reference/",output,"_rdp_genus.fa"), as.string=FALSE, nbchar=5000)
-
-##Create species Fasta
-
-names_species <- str_split_fixed(all_names, ";", n=8)
-names_species <- as.data.table(names_species)
-names_species <- subset(names_species, select=c("V1","V8")) %>%
-  separate(V8, c("genus","species"), sep="_", extra="merge" ) 
-
-names_species <- apply(names_species, 1, paste, collapse=" ")
-
-names_inhouse_species <- str_split_fixed(names_rdp_inhouse, ";", n=8)
-names_inhouse_species <- as.data.table(names_inhouse_species)
-names_inhouse_species <- subset(names_inhouse_species, select=c("V1","V8")) %>%
-  separate(V8, c("genus","species"), sep="_", extra="merge" ) 
-names_inhouse_species <- apply(names_inhouse_species, 1, paste, collapse=" ")
-
-##Save final species level merged reference DB
-write.fasta(c(rdp_genus, rdp_inhouse), c(names_species,names_inhouse_species), paste0("reference/",output, "_rdp_species.fa"), as.string=FALSE, nbchar=5000)
-
-rem <- paste0("reference/",output,"_tempfilt2.fa")
-if (file.exists(rem)) file.remove(rem)
-```
-
-# Train IDTaxa classfier
-
-Need to merge the reformattign into the above bit, if i write out the full file as well there should be no need to merge them back together!
 ```{r}
 
-#will need to read in both the fa files and cat the names together
-genus_merged <- read.fasta("reference/merged_arthropoda_rdp_genus.fa",strip.desc = FALSE, as.string = FALSE)
-names_genus <- getAnnot(genus_merged)
-
-species_merged <- read.fasta("reference/merged_arthropoda_rdp_species.fa",strip.desc = FALSE, as.string = FALSE)
-names_species <- getAnnot(species_merged)
-
-#check they are the same length
-length(names_genus)
-length(names_species)
-
-
-#Merge names
-
-names_species <- names_species %>%
-        str_split_fixed(" ", n=2)
-
-names_species <- str_replace(names_species[,2]," ","_")
-
-names_all <- paste0(names_genus,";",names_species)
-write.fasta(genus_merged, names_all, "reference/merged_arthropoda_idtaxa.fa", as.string=FALSE, nbchar=5000)
-
-
-seqs <- read.fasta("reference/merged_arthropoda_idtaxa.fa",strip.desc = FALSE, as.string = FALSE)
-names <- getName(seqs)
-
-split <- names  %>%
-        str_split_fixed(";", n=7)
-
-root <- split[,1] %>%
-        str_split_fixed(">", n=2)
-root <- root[,2] %>%
-        str_split_fixed("-", n=2)
-gene<- paste0("Root;",root[,1])
-
-split[,1] <- gene
-
-names <- apply(split, 1, paste, collapse=";")
-
-write.fasta(seqs, names, "reference/merged_arthropoda_idtaxa_renamed.fa", as.string=FALSE, nbchar=5000)
-
-
 # specify the path to your file of training sequences:
-seqs_path <- "reference/merged_arthropoda_idtaxa_renamed.fa"
+seqs_path <- "reference/merged_arthropoda.fa"
 # read the sequences into memory
 seqs <- readDNAStringSet(seqs_path)
 
@@ -681,13 +494,8 @@ seqs <- OrientNucleotides(seqs)
 # obtain the taxonomic assignments
 groups <- names(seqs) # sequence names
 
-
-##Write out seqs here,
-
-##read in seqs again?
-
-# assume the taxonomy begins with 'Eukaryota;' 
-groups <- gsub("(.*)(Eukaryota;)", "\\2", groups) # extract the group label - May need to use a wild card for the root label as its split by 3 genes!
+# assume the taxonomy begins with 'Root;' 
+groups <- gsub("(.*)(Root;)", "\\2", groups) # extract the group label - May need to use a wild card for the root label as its split by 3 genes!
 groupCounts <- table(groups)
 u_groups <- names(groupCounts) # unique groups
 length(u_groups) # number of groups
@@ -754,61 +562,4 @@ plot(trainingSet)
 #Write out training set
 
 saveRDS(trainingSet,file="reference/merged_arthropoda_idtaxa.rds")
-
-```
-
-# Create BLAST database
-
-
-# Recreate the RDP Genus and species with the pruned dataset
-
-
-```{r creat database files}
-##Create Genus Fasta
-rdp_genus<- read.fasta("reference/merged_arthropoda_idtaxa_renamed.fa",strip.desc = FALSE, as.string = FALSE)  
-
- # obtain the taxonomic groups for pruning
-  groups <- names(rdp_genus) # sequence names
-  
-  # assume the taxonomy begins with 'Eukaryota;'
-  groups <- gsub("(.*)(Eukaryota;)", "\\2", groups) # extract the group label
-  groupCounts <- table(groups)
-  u_groups <- names(groupCounts) 
-  
-  ##Prune group size down to 10 sequences
-  
-  maxGroupSize <- 10 # max sequences per label (>= 1)
-  remove <- logical(length(rdp_genus))
-  for (i in which(groupCounts > maxGroupSize)) {
-    index <- which(groups==u_groups[i])
-    keep <- sample(length(index),
-                   maxGroupSize)
-    remove[index[-keep]] <- TRUE
-  }
-  
-  rdp_pruned <- rdp_genus[!remove]
-  message(paste0(sum(remove), " total sequences were removed from over-represented species"))
-  
-all_names <- getName(rdp_pruned)
-names_genus <- str_split_fixed(all_names, ";", n=8)
-names_genus <- as.data.table(names_genus)
-names_genus <- subset(names_genus, select=c("V2","V3","V4","V5","V6","V7")) 
-#Collapse
-names_genus <- apply(names_genus, 1, paste, collapse=";")
-
-##Save final genus level merged reference DB
-write.fasta(c(rdp_pruned), c(names_genus), "reference/pruned_arthropoda_rdp_genus.fa", as.string=FALSE, nbchar=5000)
-
-##Create species Fasta
-
-names_species <- str_split_fixed(all_names, ";", n=8)
-names_species <- as.data.table(names_species)
-names_species <- subset(names_species, select=c("V1","V8")) %>%
-  separate(V8, c("genus","species"), sep="_", extra="merge" ) 
-
-names_species <- apply(names_species, 1, paste, collapse=" ")
-
-##Save final species level merged reference DB
-write.fasta(c(rdp_pruned), c(names_species), "reference/pruned_arthropoda_rdp_species.fa", as.string=FALSE, nbchar=5000)
-
 ```

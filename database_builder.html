@@ -236,7 +236,7 @@ display: none;
 padding: 0 4px 0 4px;
 }
 .pagedtable .even {
-background-color: #fcfcfc;
+background-color: rgba(140, 140, 140, 0.1);
 }
 .pagedtable-padding-col {
 display: none;
@@ -1553,6 +1553,9 @@ img {
 button.code-folding-btn:focus {
   outline: none;
 }
+summary {
+  display: list-item;
+}
 </style>
 
 
@@ -1560,14 +1563,74 @@ button.code-folding-btn:focus {
 <div class="container-fluid main-container">
 
 <!-- tabsets -->
+
+<style type="text/css">
+.tabset-dropdown > .nav-tabs {
+  display: inline-table;
+  max-height: 500px;
+  min-height: 44px;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.tabset-dropdown > .nav-tabs > li.active:before {
+  content: "";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li.active:before {
+  content: "";
+  border: none;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open:before {
+  content: "";
+  font-family: 'Glyphicons Halflings';
+  display: inline-block;
+  padding: 10px;
+  border-right: 1px solid #ddd;
+}
+
+.tabset-dropdown > .nav-tabs > li.active {
+  display: block;
+}
+
+.tabset-dropdown > .nav-tabs > li > a,
+.tabset-dropdown > .nav-tabs > li > a:focus,
+.tabset-dropdown > .nav-tabs > li > a:hover {
+  border: none;
+  display: inline-block;
+  border-radius: 4px;
+}
+
+.tabset-dropdown > .nav-tabs.nav-tabs-open > li {
+  display: block;
+  float: none;
+}
+
+.tabset-dropdown > .nav-tabs > li {
+  display: none;
+}
+</style>
+
 <script>
 $(document).ready(function () {
   window.buildTabsets("TOC");
 });
+
+$(document).ready(function () {
+  $('.tabset-dropdown > .nav-tabs > li').click(function () {
+    $(this).parent().toggleClass('nav-tabs-open')
+  });
+});
 </script>
 
 <!-- code folding -->
-
 
 
 
@@ -1589,10 +1652,14 @@ $(document).ready(function () {
 <p>This is the R based reproducible workflow for assembling the taxanomic reference database used in the manuscript &quot; &quot; by Batovska et al</p>
 <p>For this study, 3 seperate primer sets were used to amplify COI, 18S and 12S genes, and therefore a reference database is required for each of these. To form this database, the below script was run seperately for the 3 gene regions, and the fasta files for the complete genes were merged at the end.</p>
 <p>To see an overview of the reference database assembled by this script, <a href="https://alexpiper.github.io/HemipteraMetabarcodingMS/reference/Ref_DB_Krona.html">click here</a></p>
+<div id="need-to-add" class="section level3">
+<h3>NEED TO ADD</h3>
+<p>How many sequences were removed at each stage - Plot of this (Histogram of reductions) How many sequences were dereplicated - Plot of dataset redundancy (Histogram of species had 1,2,3,4,5,6,7,8,9,10+ etc)</p>
+</div>
 <div id="setup" class="section level2">
 <h2>Setup</h2>
 <pre class="r"><code>##Load Necessary packages
-sapply(c(&quot;rentrez&quot;,&quot;bold&quot;, &quot;seqinr&quot;,&quot;taxonomizr&quot;,&quot;rBLAST&quot;, &quot;tidyverse&quot;, &quot;data.table&quot; ), require, character.only = TRUE)</code></pre>
+sapply(c(&quot;rentrez&quot;,&quot;bold&quot;, &quot;seqinr&quot;,&quot;taxonomizr&quot;, &quot;tidyverse&quot;, &quot;data.table&quot;,&quot;DECIPHER&quot;), require, character.only = TRUE)</code></pre>
 <pre class="r"><code>#NCBI taxonomy database is required for processing genbank files.
 #Warning: Very large download and SQL database
 
@@ -1615,7 +1682,7 @@ dir.create(&quot;reference/bold&quot;)
 for (k in 1:length(bold_taxon)){
   time &lt;- Sys.time() # get time
   date &lt;- Sys.Date()
-  data &lt;- bold_seqspec(bold_taxon =bold_taxon[k])
+  data &lt;- bold_seqspec(taxon =bold_taxon[k])
 
     possibleError &lt;- tryCatch( if(length(data)!=0){
     
@@ -1737,7 +1804,7 @@ if (i &lt; chunks){
 </div>
 <div id="retrieve-taxonomy-for-genbank-sequences" class="section level2">
 <h2>Retrieve taxonomy for genbank sequences</h2>
-<pre class="r"><code>output &lt;- &quot;Arthropoda_COI&quot;           ##name to add to output sequences
+<pre class="r"><code>output &lt;- &quot;Arthropoda_COI&quot;     ##name to add to output sequences
 
 ##Get taxonomy
 taxaNodes&lt;-read.nodes('nodes.dmp')
@@ -1944,62 +2011,6 @@ rm(mis_filtered, mis_filtered_annot,mis_filtered_annot,pre_cluster,name_filtered
 rem &lt;- paste0(&quot;reference/&quot;,output,&quot;_tempfilt2.fa&quot;)
 if (file.exists(rem)) file.remove(rem)</code></pre>
 </div>
-<div id="create-gene-specific-databases" class="section level2">
-<h2>Create gene specific databases</h2>
-<p>dada2::assignTaxonomy expects a training fasta file in which the taxonomy corresponding to each sequence is encoded in the id line as below:</p>
-<pre class="code"><code>&gt;Level1;Level2;Level3;Level4;Level5;Level6;
-ACCTAGAAAGTCGTAGATCGAAGTTGAAGCATCGCCCGATGATCGTCTGAAGCTGTAGCATGAGTCGATTTTCACATTCAGGGATACCATAGGATAC</code></pre>
-<p>For Species level assignment dada2::addSpecies expects a training fasta file with the id line formatted as below:</p>
-<pre class="code"><code>&gt; ID Genus species
-ACCTAGAAAGTCGTAGATCGAAGTTGAAGCATCGCCCGATGATCGTCTGAAGCTGTAGCATGAGTCGATTTTCACATTCAGGGATACCATAGGATAC</code></pre>
-<p>Fasta files were reformatted to fit these expectations</p>
-<pre class="r"><code>##Create Genus Fasta
-rdp_genus&lt;- read.fasta(paste0(&quot;reference/&quot;,output,&quot;_tempfilt3.fa&quot;),strip.desc = FALSE, as.string = FALSE)  # default is DNA; add &quot;, seqtype = &quot;AA&quot; for protein
-all_names &lt;- getName(rdp_genus)
-names_genus &lt;- str_split_fixed(all_names, &quot;;&quot;, n=8)
-names_genus &lt;- as.data.table(names_genus)
-names_genus &lt;- subset(names_genus, select=c(&quot;V2&quot;,&quot;V3&quot;,&quot;V4&quot;,&quot;V5&quot;,&quot;V6&quot;,&quot;V7&quot;)) 
-#Collapse
-names_genus &lt;- apply(names_genus, 1, paste, collapse=&quot;;&quot;)
-##Add bold_loci to first level of taxonomy
-names_genus &lt;- paste0(bold_loci,&quot;_&quot;,names_genus)
-
-#merge in our sequences
-##These sequences may still have primers included - should remove these
-rdp_inhouse &lt;- read.fasta(&quot;COI_inhouse.fa&quot;,strip.desc = FALSE, as.string = FALSE)  # default is DNA; add &quot;, seqtype = &quot;AA&quot; for protein
-names_rdp_inhouse &lt;- getName(rdp_inhouse)
-names_inhouse_genus &lt;- str_split_fixed(names_rdp_inhouse, &quot;;&quot;, n=8)
-names_inhouse_genus &lt;- as.data.table(names_inhouse_genus)
-names_inhouse_genus &lt;- subset(names_inhouse_genus, select=c(&quot;V2&quot;,&quot;V3&quot;,&quot;V4&quot;,&quot;V5&quot;,&quot;V6&quot;,&quot;V7&quot;)) 
-#Collapse
-names_inhouse_genus &lt;- apply(names_inhouse_genus, 1, paste, collapse=&quot;;&quot;)
-##Add bold_loci to first level of taxonomy
-names_inhouse_genus &lt;- paste0(bold_loci,&quot;_&quot;,names_inhouse_genus)
-
-##Save final genus level merged reference DB
-write.fasta(c(rdp_genus, rdp_inhouse), c(names_genus,names_inhouse_genus), paste0(&quot;reference/&quot;,output,&quot;_rdp_genus.fa&quot;), as.string=FALSE, nbchar=5000)
-
-##Create species Fasta
-
-names_species &lt;- str_split_fixed(all_names, &quot;;&quot;, n=8)
-names_species &lt;- as.data.table(names_species)
-names_species &lt;- subset(names_species, select=c(&quot;V1&quot;,&quot;V8&quot;)) %&gt;%
-  separate(V8, c(&quot;genus&quot;,&quot;species&quot;), sep=&quot;_&quot;, extra=&quot;merge&quot; ) 
-
-names_species &lt;- apply(names_species, 1, paste, collapse=&quot; &quot;)
-
-names_inhouse_species &lt;- str_split_fixed(names_rdp_inhouse, &quot;;&quot;, n=8)
-names_inhouse_species &lt;- as.data.table(names_inhouse_species)
-names_inhouse_species &lt;- subset(names_inhouse_species, select=c(&quot;V1&quot;,&quot;V8&quot;)) %&gt;%
-  separate(V8, c(&quot;genus&quot;,&quot;species&quot;), sep=&quot;_&quot;, extra=&quot;merge&quot; ) 
-names_inhouse_species &lt;- apply(names_inhouse_species, 1, paste, collapse=&quot; &quot;)
-
-##Save final species level merged reference DB
-write.fasta(c(rdp_genus, rdp_inhouse), c(names_species,names_inhouse_species), paste0(&quot;reference/&quot;,output, &quot;_rdp_species.fa&quot;), as.string=FALSE, nbchar=5000)
-
-rem &lt;- paste0(&quot;reference/&quot;,output,&quot;_tempfilt2.fa&quot;)
-if (file.exists(rem)) file.remove(rem)</code></pre>
-</div>
 <div id="merge-3-genes-together-into-final-db" class="section level2">
 <h2>Merge 3 genes together into final DB</h2>
 <p>All above steps were conducted for the COI, 18S and 12S genes targetted in this study, and then the fasta files were merged into one final database</p>
@@ -2038,6 +2049,96 @@ names_species_12s &lt;- getAnnot(species_12S)
 ##Save final species level merged reference DB
 write.fasta(c(species_COI, species_18S,species_12S ), c(names_species_COI,names_species_18s,names_species_12s), &quot;reference/merged_arthropoda_rdp_species.fa&quot;, as.string=FALSE, nbchar=5000)</code></pre>
 </div>
+</div>
+<div id="prune-sequences-train-idtaxa-classfier" class="section level1">
+<h1>Prune sequences &amp; Train IDTaxa classfier</h1>
+<p>Need to merge the reformattign into the above bit, if i write out the full file as well there should be no need to merge them back together!</p>
+<pre class="r"><code># specify the path to your file of training sequences:
+seqs_path &lt;- &quot;reference/merged_arthropoda_idtaxa_renamed.fa&quot;
+# read the sequences into memory
+seqs &lt;- readDNAStringSet(seqs_path)
+
+# As taxonomies are encoded in the sequence names rather than a separate file, use:
+taxid &lt;- NULL
+seqs &lt;- RemoveGaps(seqs)
+seqs &lt;- OrientNucleotides(seqs)
+
+# obtain the taxonomic assignments
+groups &lt;- names(seqs) # sequence names
+
+
+##Write out seqs here,
+
+##read in seqs again?
+
+# assume the taxonomy begins with 'Eukaryota;' 
+groups &lt;- gsub(&quot;(.*)(Eukaryota;)&quot;, &quot;\\2&quot;, groups) # extract the group label - May need to use a wild card for the root label as its split by 3 genes!
+groupCounts &lt;- table(groups)
+u_groups &lt;- names(groupCounts) # unique groups
+length(u_groups) # number of groups
+ 
+# Pruning training set
+
+maxGroupSize &lt;- 10 # max sequences per label (&gt;= 1)
+remove &lt;- logical(length(seqs))
+for (i in which(groupCounts &gt; maxGroupSize)) {
+  index &lt;- which(groups==u_groups[i])
+  keep &lt;- sample(length(index),
+  maxGroupSize)
+  remove[index[-keep]] &lt;- TRUE
+}
+sum(remove) # number of sequences eliminated
+
+
+# Training the classifier
+maxIterations &lt;- 3 # must be &gt;= 1
+allowGroupRemoval &lt;- TRUE
+probSeqsPrev &lt;- integer() # suspected problem sequences from prior iteration
+for (i in seq_len(maxIterations)) {
+  cat(&quot;Training iteration: &quot;, i, &quot;\n&quot;, sep=&quot;&quot;)
+  # train the classifier
+  trainingSet &lt;- LearnTaxa(seqs[!remove],
+  names(seqs)[!remove],
+  taxid)
+  
+  # look for problem sequences
+  probSeqs &lt;- trainingSet$problemSequences$Index
+  if (length(probSeqs)==0) {
+    cat(&quot;No problem sequences remaining.\n&quot;)
+    break
+  } else if (length(probSeqs)==length(probSeqsPrev) &amp;&amp;
+  all(probSeqsPrev==probSeqs)) {
+    cat(&quot;Iterations converged.\n&quot;)
+    break
+    }
+  if (i==maxIterations)
+  break
+  probSeqsPrev &lt;- probSeqs
+  
+  # remove any problem sequences
+  index &lt;- which(!remove)[probSeqs]
+  remove[index] &lt;- TRUE # remove all problem sequences
+  if (!allowGroupRemoval) {
+    # replace any removed groups
+    missing &lt;- !(u_groups %in% groups[!remove])
+    missing &lt;- u_groups[missing]
+    if (length(missing) &gt; 0) {
+    index &lt;- index[groups[index] %in% missing]
+    remove[index] &lt;- FALSE # don't remove
+    }
+  }
+}
+sum(remove) # total number of sequences eliminated
+length(probSeqs) # number of remaining problem sequences
+
+# View the results of training
+
+trainingSet
+plot(trainingSet)
+
+#Write out training set
+
+saveRDS(trainingSet,file=&quot;reference/merged_arthropoda_idtaxa.rds&quot;)</code></pre>
 </div>
 
 

@@ -42,24 +42,15 @@ Run_3 - 10 trap samples with varying numbers of insects
 
 In order to handle process hte , in this pipeline the samples are read in and processed within a for-loop, so only one sample is fully loaded into memory at a time. This keeps memory requirements quite low, and multiple MiSeq runs, or a Hiseq lane can be processed on 8GB of memory (although more is nice!).
 
-## Reference database
 
-dada2::assignTaxonomy expects a training fasta file in which the taxonomy corresponding to each sequence is encoded in the id line as below:
+## Set up
 
-```{code}
->Level1;Level2;Level3;Level4;Level5;Level6;
-ACCTAGAAAGTCGTAGATCGAAGTTGAAGCATCGCCCGATGATCGTCTGAAGCTGTAGCATGAGTCGATTTTCACATTCAGGGATACCATAGGATAC
+Load all requried packages
+
+```{r load packages, message=FALSE, eval = FALSE }
+sapply(c("dada2", "phyloseq","ggplot2","ips", "DECIPHER", "data.table", "ggplot2", "tidyverse","Biostrings","ShortRead","scales", "psadd","ggpubr","seqinr", "viridis"), require, character.only = TRUE)
+
 ```
-
-For Species level assignment dada2::addSpecies expects a training fasta file  with the id line formatted as below:
-```{code}
-> ID Genus species
-ACCTAGAAAGTCGTAGATCGAAGTTGAAGCATCGCCCGATGATCGTCTGAAGCTGTAGCATGAGTCGATTTTCACATTCAGGGATACCATAGGATAC
-```
-While the creators of DADA2 maintain formatted reference data for 16S and ITS regions, for the genes used in this study (COI, 18S, 12S) this database will need to be assembled and curated prior to beginning this workflow. This has been done within the associated Reference_builder.Rmd file
-
-To see an overview of the reference database assembled for this study, [click here](https://alexpiper.github.io/HemipteraMetabarcodingMS/reference/Ref_DB_Krona.html)
-
 
 #Remove primers
 
@@ -119,14 +110,6 @@ rm *.temp.*
     
 # DADA2 portion of workflow
 
-## Set up
-
-Load all requried packages
-
-```{r load packages, message=FALSE, eval = FALSE }
-sapply(c("dada2", "phyloseq","ggplot2","ips", "DECIPHER", "data.table", "ggplot2", "tidyverse","Biostrings","ShortRead","scales", "psadd","ggpubr"), require, character.only = TRUE)
-
-```
 
 
 ## Error visualisation
@@ -277,21 +260,18 @@ saveRDS(seqtab.nochim, "output/rds/seqtab_final.rds") # CHANGE ME to where you w
 
 ```
 
-## Assign taxonomy
+### Dada2 assign tax
 
-At this point we will assign kingdom to genus taxonomy to the sequence reads using the RDP classifier natively implemented in DADA2, with a bootstrap confidence of 80. Following this, species level taxonomy was added using exact matching.
+```{r}
 
-
-```{r assign taxonomy}
-
-seqtab.nochim <- readRDS("data/seqtab_final.rds")
+seqtab.nochim <- readRDS("output/rds/seqtab_final.rds")
 
 # Assign Kingdom:Genus taxonomy using RDP classifier
-tax <- assignTaxonomy(seqtab.nochim, "reference/merged_arthropoda_rdp_genus.fa", multithread=TRUE, minBoot=80, outputBootstraps=FALSE)
-colnames(tax) <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus")
+tax <- assignTaxonomy(seqtab.nochim, "reference/merging/merged_arthropoda_rdp_genus.fa", multithread=TRUE, minBoot=80, outputBootstraps=FALSE)
+colnames(tax) <- c("Gene", "Phylum", "Class", "Order", "Family", "Genus")
 
 ##add species to taxtable using exact matching
-tax_plus <- addSpecies(tax, "reference/merged_arthropoda_rdp_species.fa", allowMultiple=TRUE)
+tax_plus <- addSpecies(tax, "reference/merging/merged_arthropoda_rdp_species.fa", allowMultiple=TRUE)
 
 ##Add SP. to species rank for those with only a genus rank assignmnet
 for(col in seq(7,ncol(tax_plus))) { 
@@ -309,30 +289,26 @@ rownames(taxa.print) <- NULL
 head(taxa.print)
 
 # Write taxonomy table to disk
-saveRDS(tax_plus, "output/rds/tax_boot80_final.rds") 
+saveRDS(tax_plus, "output/rds/tax_RDP_final.rds") 
 
 ```
 
-
-
-
-## ALTERNATIVE - Assign taxonomy with IDTAXA
-
-IDTAXA
+## Assign taxonomy with IDTAXA
 
 
 ```{r IDTAXA}
 library(DECIPHER); packageVersion("DECIPHER")
 
 seqtab.nochim <- readRDS("output/rds/seqtab_final.rds")
-trainingSet <- readRDS("reference/merged_arthropoda_idtaxa.rds")
+trainingSet <- readRDS("reference/rdp_genus_rooted_idtaxa.rds")
 
 dna <- DNAStringSet(getSequences(seqtab.nochim)) # Create a DNAStringSet from the ASVs
 
 ##Decide on threshold
-ids <- IdTaxa(dna, trainingSet, strand="top", processors=1,threshold = 60, verbose=TRUE) # use all processors
+ids <- IdTaxa(dna, trainingSet, processors=1,threshold = 60, verbose=TRUE) 
 
-##Write out IDs file
+#plot(ids, trainingSet)
+
 
 #delete existing file
 cat("",file="idtaxa.csv")
@@ -342,13 +318,17 @@ for (i in 1:length(ids)){
 write.table(lines,file="idtaxa.csv",sep=",",append=TRUE, col.names=FALSE)
 }
 
-ranks <-  c("Root","Kingdom", "Phylum","Class", "Order", "Family", "Genus", "Species") # ranks of interest
+ranks <-  c("Root","Kingdom", "Phylum","Class", "Order", "Family", "Genus") # ranks of interest
 # Convert the output object of class "Taxa" to a matrix analogous to the output from assignTaxonomy
 taxid <- t(sapply(ids, function(x) {
         taxa <- x$taxon
         taxa[startsWith(taxa, "unclassified_")] <- NA
         taxa
 }))
+
+
+#tax_add <- addSpecies(taxid, "reference/pruned_arthropoda_rdp_species.fa", allowMultiple = TRUE)
+
 
 library(stringi)
 taxid <- stri_list2matrix(lapply(taxid, unlist), byrow=TRUE, fill="NA")
@@ -358,7 +338,7 @@ taxid[startsWith(taxid, "NA")] <- NA
 colnames(taxid) <- ranks; rownames(taxid) <- getSequences(seqtab.nochim)
 
 #Subset to remove the root rank
-taxid <- subset(taxid, select=c("Kingdom", "Phylum","Class", "Order", "Family", "Genus", "Species"))
+taxid <- subset(taxid, select=c("Kingdom", "Phylum","Class", "Order", "Family", "Genus"))
 
 #Name object the same as the output of addSpecies
 tax_plus <- taxid
@@ -390,16 +370,13 @@ saveRDS(tax_plus, "output/rds/tax_IdTaxa_final.rds")
 
 ```
 
-
 ## Make phyloseq 
 
 Following taxonomic assignment, both the sequence table and taxonomic table are passed to the Phyloseq R package for further community analysis and visualisation of data. This involves loading in the sample info csv to merge with the sequence and taxonomy tables
 
 ```{r create PS, eval = FALSE}
 seqtab.nochim <- readRDS("output/rds/seqtab_final.rds")
-#tax_plus <- readRDS("output/rds/tax_boot80_final.rds") 
-tax_plus <- readRDS("output/rds/tax_IdTaxa_final.rds") 
-#tax_plus <- readRDS("output/rds/tax_blast_final.rds") 
+tax_plus <- readRDS("output/rds/tax_RDP_final.rds") 
 
 #Load sample information
 ## ---- samdat ----
@@ -408,7 +385,7 @@ samdf <- samdf[!duplicated(samdf$SampleID),] #Remove duplicate entries for rever
 
 rownames(samdf) <- samdf$SampleID
 keep.cols <- c("collection_date", "biome", "target_gene", "feature",
-"sample_name" ,"SampleID","experimental_factor")
+"pool_comp" ,"SampleID","experimental_factor")
 samdf <- samdf[rownames(seqtab.nochim), keep.cols]
 
 #Display samDF
@@ -418,18 +395,14 @@ head(samdf)
 ps <- phyloseq(tax_table(tax_plus), sample_data(samdf),
                otu_table(seqtab.nochim, taxa_are_rows = FALSE))
 ##save phyloseq object
-#saveRDS(ps, "output/rds/ps_final.rds") 
-saveRDS(ps, "output/rds/ps_idtaxa.rds") 
-#saveRDS(ps, "output/rds/ps_blast.rds") 
+saveRDS(ps, "output/rds/ps_rdp.rds") 
 ```
 
 
 ## Output tables of results
 
 ```{r output table, eval = FALSE}
-#ps <- readRDS("output/rds/ps_final.rds")
-ps <- readRDS("output/rds/ps_idtaxa.rds")
-#ps <- readRDS("output/rds/ps_blast.rds")
+ps <- readRDS("output/rds/ps_rdp.rds")
 
 dir.create("output/csv")
 dir.create("output/csv/unfiltered/")
@@ -476,6 +449,7 @@ write.csv(sum_gen, file = "output/csv/unfiltered/allgene_genglom_unfiltered_summ
 psFR <- transform_sample_counts(ps1, fun = filterfun)
 psFR <- transform_sample_counts(psFR, fun = proportions)
 psFR = filter_taxa(psFR, function(x) mean(x) > 0, TRUE) #Drop missing
+
 ##Export filtered data
 export <- psmelt(psFR)
 write.csv(export, file = "output/csv/filtered/allgene_arthropoda_filt.csv")
@@ -483,12 +457,12 @@ write.csv(export, file = "output/csv/filtered/allgene_arthropoda_filt.csv")
 #Agglomerate all filtered OTUS by species & Genus level taxonomy and export
 rm_c1 <-  c("Pool-C1-250","Pool-C2-250","Pool-C3-250","Pool-C4-250","Pool-C5-250")
 spp_level <- subset_samples(psFR, sample_names(psFR)!=rm_c1)
-spp_level = tax_glom(spp_level, "Species", NArm = TRUE)
+spp_level = tax_glom(spp_level, "Species", NArm = FALSE)
 sppexport <- psmelt(spp_level)
 write.csv(sppexport, file = "output/csv/filtered/allgene_sppglom_filt.csv")
 
 gen_level <- subset_samples(psFR, sample_names(psFR)!=rm_c1)
-gen_level = tax_glom(gen_level, "Genus", NArm = TRUE)
+gen_level = tax_glom(gen_level, "Genus", NArm = FALSE)
 genexport <- psmelt(gen_level)
 write.csv(genexport, file = "output/csv/filtered/allgene_genglom_filt.csv")
 
@@ -497,21 +471,19 @@ sum_spp_filt <- summarize_taxa(psFR, "Species", "SampleID")
 sum_spp_filt <- spread(sum_spp_filt, key="SampleID", value="totalRA")
 write.csv(sum_spp_filt, file = "output/csv/filtered/allgene_sppglom_filt_summarized.csv")
 
-sum_gen_filt <- summarize_taxa(psFR, "Species", "SampleID")
+sum_gen_filt <- summarize_taxa(psFR, "Genus", "SampleID")
 sum_gen_filt <- spread(sum_gen_filt, key="SampleID", value="totalRA")
 write.csv(sum_gen_filt, file = "output/csv/filtered/allgene_genglom_filt_summarized.csv")
-
 
 ```
 
 #Plotting 
 
-# Add expected samples 
+# Add expected abundances for all samples 
 
 As part of the mock community analysis, we wish to determine taxonomic bias by looking at observed vs expected reads. To do this, we load dummy sequence, taxonomy, and sample data tables and create a seperate phyloseq object, which will later be merged
 
 This loads a dummy sequence table, taxonomy table, and sample data table and merges it into the existing phyloseq object
-
 
 ```{r get expected , eval = FALSE}
 #Load expected information
@@ -521,7 +493,7 @@ exp_taxtab <- as.matrix(read.csv("sample_data/expected/exp_taxtab.csv",row.names
 exp_samdf <- read.csv("sample_data/expected/exp_samdf.csv", header=TRUE)
 
 keep.cols <- c("collection_date", "biome", "target_gene", "feature",
-"sample_name" ,"SampleID","experimental_factor")
+"pool_comp" ,"SampleID","experimental_factor")
 rownames(exp_samdf) <- exp_samdf$SampleID
 exp_samdf <- exp_samdf[rownames(exp_seqtab), keep.cols]
 
@@ -531,7 +503,7 @@ ps_exp <- phyloseq(tax_table(exp_taxtab), sample_data(exp_samdf),
 
 ```
 
-# Plots for all genes merged
+## Plots for all genes
 
 
 ```{r Plot all genes, eval = FALSE}
@@ -540,6 +512,8 @@ dir.create("output/figs")
 positions = c('Pool-01-100', 'Pool-02-100', 'Pool-03-100', 'Pool-04-100', 'Pool-05-100', 'Pool-06-500', 'Pool-07-500', 'Pool-08-500', 'Pool-09-500', 'Pool-10-500', 'Pool-11-1000', 'Pool-12-1000', 'Pool-13-1000', 'Pool-14-1000', 'Pool-15-1000', 'Pool-U1-250', 'Pool-U2-250', 'Pool-U3-250', 'Pool-U4-250', 'Pool-U5-250', 'Trap-01', 'Trap-02', 'Trap-03', 'Trap-04', 'Trap-05', 'Trap-06', 'Trap-07', 'Trap-08', 'Trap-09', 'Trap-10')
 
 positions_exp = c('Pool-01-100','Pool-01-100-exp',  'Pool-02-100','Pool-02-100-exp', 'Pool-03-100','Pool-03-100-exp', 'Pool-04-100','Pool-04-100-exp', 'Pool-05-100','Pool-05-100-exp', 'Pool-U1-250','Pool-U1-250-exp', 'Pool-U2-250','Pool-U2-250-exp', 'Pool-U3-250','Pool-U3-250-exp', 'Pool-U4-250','Pool-U4-250-exp', 'Pool-U5-250','Pool-U5-250-exp', 'Pool-06-500','Pool-06-500-exp', 'Pool-07-500','Pool-07-500-exp', 'Pool-08-500','Pool-08-500-exp', 'Pool-09-500','Pool-09-500-exp', 'Pool-10-500','Pool-10-500-exp', 'Pool-11-1000','Pool-11-1000-exp', 'Pool-12-1000','Pool-12-1000-exp', 'Pool-13-1000','Pool-13-1000-exp', 'Pool-14-1000','Pool-14-1000-exp', 'Pool-15-1000','Pool-15-1000-exp')
+
+#Figure 1 - Mock communities observed Vs Expected
 
 #Merge in expecteds 
 pstemp <- merge_phyloseq(psFR, ps_exp)
@@ -550,7 +524,7 @@ pstemp <- transform_sample_counts(pstemp, fun = proportions)
 tax_table(pstemp) <- tax_table(pstemp)[,2:7]
 
 
-##Plot mock communties
+##Subset to mock communities
 psmock = subset_samples(pstemp, biome == "Laboratory")
 psmock = filter_taxa(psmock, function(x) mean(x) > 0, TRUE)
 rm_c1 <-  c("Pool-C1-250","Pool-C2-250","Pool-C3-250","Pool-C4-250","Pool-C5-250")
@@ -559,110 +533,104 @@ rm_c1_exp<- c("Pool-C1-250-exp","Pool-C2-250-exp","Pool-C3-250-exp","Pool-C4-250
 psmock <- subset_samples(psmock, sample_names(psmock)!=rm_c1_exp)
 psmock = tax_glom(psmock, "Species", NArm = TRUE)
 psmock <- transform_sample_counts(psmock, fun= proportions) # Reset scale to 1 following NArm
-
 mdf <- psmelt(psmock)
+
+
+#Reorder to pool composition
+mdf$SampleID <- factor(mdf$SampleID, levels = unique(mdf$SampleID[order(-mdf$pool_comp)]))
+
+#Plot horizontal mock communities
+
 p <- ggplot(mdf, aes(x= SampleID, y=Abundance,fill= Genus))
 p = p + geom_bar(stat = "identity", position = "stack", color = "NA")  
 p = p + theme(axis.text.x = element_text(angle = -90, hjust = 0))
 p = p + ggtitle(paste0("Relative abundance of taxa for all genes in mock communities"))
 p = p + xlab("Mock Community") 
-p = p + scale_fill_brewer(palette="RdYlBu")
+#p = p + scale_fill_viridis(discrete = TRUE)
+p = p + scale_fill_manual(values=c("#0c4687","#ae0707","#fa6e24","#3a9e82","#95cf77"))
 p = p + theme_pubclean()
-p1 = p + facet_wrap(feature~sample_name, drop=TRUE, scales="free_x") + xlab("feature")+ theme(axis.text.x = element_blank())
+p1 =  p + scale_x_discrete(limits = positions_exp) + coord_flip()
 
-p5 =  p + scale_x_discrete(limits = positions_exp) + coord_flip()
+#plot obs/exp seperated 2 cols
+p2 = p + facet_wrap(.~experimental_factor, drop=TRUE, scales="free")  + coord_flip() #+ theme(axis.text.y = element_blank(), axis.ticks.y=element_blank())
+#plot obs/exp seperated 2 rows
+p3 = p + facet_wrap(~experimental_factor, nrow=2,ncol=1,drop=TRUE, scales="free") + coord_flip()
 
 
-psreal = subset_samples(pstemp, experimental_factor != "Exp")
-psreal <- subset_samples(psreal, sample_names(psreal)!=rm_c1)
+#Figure 2 - All detecctions
 
+#Drop Kingdom column so we have 3 genes merged 
+psglom <- psFR
+tax_table(psglom) <- tax_table(psglom)[,2:7]
 psglom = tax_glom(psreal, "Species", NArm = TRUE)
 psglom <- transform_sample_counts(psglom, fun= proportions) # Reset scale to 1 following NArm
-p2 <- plot_heatmap(psglom, "NMDS", "bray", taxa.label="Species", title= paste0("All genes Heatmap Species level"), taxa.order="Order", trans=log_trans(2)) + scale_x_discrete(limits = positions)
+psglom = filter_taxa(psglom, function(x) mean(x) > 0, TRUE)
+p4 <- plot_heatmap(psglom, "NMDS", "bray", taxa.label="Species", taxa.order="Family") + theme_pubr()  + scale_x_discrete(limits = positions) + theme(axis.text.x = element_text(angle=60, hjust=1), axis.title.x=element_blank(), axis.title.y=element_blank(), legend.position="none") + scale_fill_viridis(trans=log_trans(10), na.value="grey10") 
 
 
-psglom2 = tax_glom(psreal, "Genus", NArm = TRUE)
-psglom2 <- transform_sample_counts(psglom2, fun= proportions) # Reset scale to 1 following NArm
-p3 <- plot_heatmap(psglom2, "NMDS", "bray", taxa.label="Genus", title= paste0("All genes Heatmap Genus level"), taxa.order="Order", trans=log_trans(2)) + scale_x_discrete(limits = positions)
+#axis.text.y = element_blank()
 
-##Presence absense for each gene
-
-mdt = fast_melt(psFR)
-# Add the variable indicated in `GroupBy`, if provided.
-    sdt = data.table(SampleID = sample_names(psFR),
-                     var1 = get_variable(psFR, "SampleID"))
-    setnames(sdt, "var1", "SampleID")
-    # Join
-    setkey(sdt, SampleID)
-    setkey(mdt, SampleID)
-    mdt <- sdt[mdt]
-  # Summarize
+##Presence absense for each gene 
+ 
+  mdt = fast_melt(psFR)
   summarydt = mdt[, list(totalRA = sum(RelativeAbundance)),
-                  by = c("Kingdom","Order","Family", "Genus","Species", "SampleID", "taxaID")]
+                  by = c("Gene","Order","Family", "Genus","Species", "SampleID", "taxaID")]
   summarydt <- summarydt[!is.na(summarydt$Species)]
   summarydt$totalRA[summarydt$totalRA > 0] <- 1
   
-  summarydt$totalRA <- replace(summarydt$totalRA,summarydt > 0, 1)
+  #Attempt rearragning  - Losing the duplicates Here!
+  rankcol = which(rank_names(psglom) %in% "Family")
+  taxmat = as(tax_table(psglom)[, 1:rankcol], "matrix")
+  taxa.order = apply(taxmat, 1, paste, sep = "", collapse = "")
+  names(taxa.order) <- taxa_names(psglom)
+  taxa.order = as.tibble(names(sort(taxa.order, na.last = TRUE)))
+  colnames(taxa.order) <- "taxaID"
+  taxa.order$seq <- seq(1:nrow(taxa.order))
+  reorder <- full_join(taxa.order,summarydt,by="taxaID") 
+
+  reorder$Species <- factor(reorder$Species, levels = unique(reorder$Species[order(reorder$seq)]))
   
-  summarydt$test <- paste(summarydt$Order,summarydt$Family,summarydt$Species,sep="_")
-  
-p4 <- ggplot(summarydt, aes(Kingdom, Species)) + geom_tile(aes(fill = totalRA),
-   colour = "White") + theme_pubclean() + theme(legend.position="none") + coord_fixed(ratio=.5) + theme(axis.text.x = element_text(angle = -90, hjust = 0)) 
+p5 <- ggplot(reorder, aes(Gene, Species)) + geom_point(aes(colour = Gene),size=3) + theme(legend.position="none") + coord_fixed(ratio=.5) + theme(axis.text.x = element_text(angle=60, hjust=1), axis.title.x=element_blank(), axis.title.y=element_blank()) + theme_void() + theme(legend.position="none")
+
+pname <- ggplot(reorder, aes(x=c(1), Species) ) + geom_tile(aes(fill=reorder$Order))+ geom_text(label=reorder$Order) + theme_void() + theme(legend.position="none")
 
 
+ggarrange(pname,p5,p4,nrow=1,ncol=3,widths = c(1,1,5),align="h")
+
+#Save plots to file
 pdf(file= "output/figs/allgenes_plots.pdf", paper="a4")
 plot(p1)
-plot(p5)
 plot(p2)
 plot(p3)
 plot(p4)
+plot(ggarrange(pname,p5,p4,nrow=1,ncol=3,widths = c(1,4,5),align="h"))
 dev.off()
-```
 
 
+#Problem named taxa - Need to gsub names
+#Rhopalosiphum insertum/oxyacanthae <- Rhopalosiphum insertum
+#Rhopalosiphum rufiabdominale/rufiabdominalis <- Rhopalosiphum rufiabdominale
+#Lonchoptera bifurcata/uniseta
+#Lipaphis erysimi/pseudobrassicae
 
-```{r presence absense for each gene, include=FALSE}
-
-
-##Code for getting order for heatmaps
-RadialTheta <- function(x) {
-    
-    x <- as(x, "matrix")
-    theta <- atan2((x[, 2] - mean(x[, 2])), (x[, 1] - mean(x[, 1])))
-    names(theta) <- rownames(x)
-    
-    theta
-    
-}
-
-## ordination_object is the output of ordinate()
-glom_ordinate <- ordinate(psglom2, "NMDS", "bray")
-my_heatmap_order = order(RadialTheta(glom_ordinate$species))
-
-
- rankcol = which(rank_names(physeq) %in% taxa.order)
-        taxmat = as(tax_table(physeq)[, 1:rankcol], "matrix")
-        taxa.order = apply(taxmat, 1, paste, sep = "", collapse = "")
-        names(taxa.order) <- taxa_names(physeq)
-        taxa.order = names(sort(taxa.order, na.last = TRUE))
 
 ```
 
 
-# Supplementary Figures - Plot each gene seperately
+## Supplementary Figures - Plot each gene seperately
 
 ```{r Seperate genes}
 
 positions = c('Pool-01-100', 'Pool-02-100', 'Pool-03-100', 'Pool-04-100', 'Pool-05-100', 'Pool-06-500', 'Pool-07-500', 'Pool-08-500', 'Pool-09-500', 'Pool-10-500', 'Pool-11-1000', 'Pool-12-1000', 'Pool-13-1000', 'Pool-14-1000', 'Pool-15-1000', 'Pool-U1-250', 'Pool-U2-250', 'Pool-U3-250', 'Pool-U4-250', 'Pool-U5-250', 'Trap-01', 'Trap-02', 'Trap-03', 'Trap-04', 'Trap-05', 'Trap-06', 'Trap-07', 'Trap-08', 'Trap-09', 'Trap-10')
 
-genes <- unique(psmelt(ps) %>% select(Kingdom))
-genes <- as.vector(genes$Kingdom)
+genes <- unique(psmelt(ps) %>% select(Gene))
+genes <- as.vector(genes$Gene)
 genes <- genes[!is.na(genes)]
 
 for (i in seq(along=genes)){
   ####PROBLEM HERE WILL BE THE MOCKS!
 print(genes[i])
-ps_gene = subset_taxa(psFR, Kingdom == genes[i])
+ps_gene = subset_taxa(psFR, Gene == genes[i])
 ps_gene = subset_taxa(ps_gene, Phylum == "Arthropoda")
 
 ps_genexp <- merge_phyloseq(ps_gene, ps_exp)
@@ -674,7 +642,7 @@ sp_summary <- summarize_taxa(summary, "Species", "SampleID")
 sp_summary <- spread(sp_summary, key="SampleID", value="totalRA")
 write.csv(sp_summary, file = paste0("output/csv/seperategenes/",genes[i],"_sppglom_filt_summarized.csv"))
 
-gen_summary <- summarize_taxa(summary, "Species", "SampleID")
+gen_summary <- summarize_taxa(summary, "Genus", "SampleID")
 gen_summary <- spread(gen_summary, key="SampleID", value="totalRA")
 write.csv(gen_summary, file = paste0("output/csv/seperategenes/",genes[i],"_genglom_filt_summarized.csv"))
 
@@ -684,37 +652,40 @@ psra_gene <- transform_sample_counts(ps_genexp, fun = filterfun)
 ##Remove zero counts
 psra_gene = filter_taxa(psra_gene, function(x) mean(x) > 0, TRUE) #Used to be 1e-6
 
-##Figure  1 - Mock communities
-
-##Plot mock communties
-psmock_gene = subset_samples(psra_gene, biome == "Laboratory")
-psmock_gene = filter_taxa(psmock_gene, function(x) mean(x) > 0, TRUE)
+##Subset to mock communities
+psmock = subset_samples(psra_gene, biome == "Laboratory")
+psmock = filter_taxa(psmock, function(x) mean(x) > 0, TRUE)
 rm_c1 <-  c("Pool-C1-250","Pool-C2-250","Pool-C3-250","Pool-C4-250","Pool-C5-250")
-psmock_gene <- subset_samples(psmock_gene, sample_names(psmock_gene)!=rm_c1)
+psmock <- subset_samples(psmock, sample_names(psmock)!=rm_c1)
 rm_c1_exp<- c("Pool-C1-250-exp","Pool-C2-250-exp","Pool-C3-250-exp","Pool-C4-250-exp","Pool-C5-250-exp")
-psmock_gene <- subset_samples(psmock_gene, sample_names(psmock_gene)!=rm_c1_exp)
-psmock_gene = tax_glom(psmock_gene, "Species", NArm = TRUE)
-psmock_gene <- transform_sample_counts(psmock_gene, fun= proportions) # Reset scale to 1 following NArm
+psmock <- subset_samples(psmock, sample_names(psmock)!=rm_c1_exp)
+psmock = tax_glom(psmock, "Species", NArm = TRUE)
+psmock <- transform_sample_counts(psmock, fun= proportions) # Reset scale to 1 following NArm
+mdf <- psmelt(psmock)
 
 
-mdf <- psmelt(psmock_gene)
-p <- ggplot(mdf, aes_string(x= "SampleID", y="Abundance", fill= "Genus" ))
+#Reorder to pool composition
+mdf$SampleID <- factor(mdf$SampleID, levels = unique(mdf$SampleID[order(-mdf$pool_comp)]))
+
+#Plot horizontal mock communities
+
+p <- ggplot(mdf, aes(x= SampleID, y=Abundance,fill= Genus))
 p = p + geom_bar(stat = "identity", position = "stack", color = "NA")  
 p = p + theme(axis.text.x = element_text(angle = -90, hjust = 0))
-p = p + ggtitle(paste0("Relative abundance of taxa for ", genes[i], " in mock communities"))
+p = p + ggtitle(paste0("Relative abundance of taxa for all genes in mock communities"))
 p = p + xlab("Mock Community") 
-p = p + scale_fill_brewer(type="div", palette="RdYlBu")
-p = p + theme_pubclean()
-p1 = p + facet_wrap(feature~sample_name, drop=TRUE, scales="free_x") + xlab("feature")+ theme(axis.text.x = element_blank())
+p = p + scale_fill_manual(values=c("#0c4687","#ae0707","#fa6e24","#3a9e82","#95cf77"))
+p = p + theme_pubclean() 
+p1 =  p + facet_wrap(~experimental_factor, drop=TRUE, scales="free")  + coord_flip() #+ theme(axis.text.y = element_blank(), axis.ticks.y=element_blank())
+
+#plot obs/exp seperated 2 rows
+p2 = p + facet_wrap(~experimental_factor, nrow=2,ncol=1,drop=TRUE, scales="free") + coord_flip() 
 
 psreal_gene = subset_samples(psra_gene, experimental_factor != "Exp")
 psreal_gene <- subset_samples(psreal_gene, sample_names(psreal_gene)!=rm_c1)
 
 psglom = tax_glom(psreal_gene, "Species", NArm = TRUE)
-p2 <- plot_heatmap(psglom, "NMDS", "bray", taxa.label="Species", title= paste0(genes[i]," Heatmap Species level"), taxa.order="Order", trans=log_trans(2)) + scale_x_discrete(limits = positions)
-
-psglom2 = tax_glom(psreal_gene, "Genus", NArm = TRUE)
-p3 <- plot_heatmap(psglom2, "NMDS", "bray", taxa.label="Genus", title= paste0(genes[i]," Heatmap Genus level"), taxa.order="Order", trans=log_trans(2)) + scale_x_discrete(limits = positions)
+p3 <- plot_heatmap(psglom, "NMDS", "bray", taxa.label="Species", title= paste0(genes[i]," Heatmap Species level"), taxa.order="Family") + theme_pubr()  + scale_x_discrete(limits = positions) + theme(axis.text.x = element_text(angle=60, hjust=1), axis.title.x=element_blank(), axis.title.y=element_blank(), legend.position="none") + scale_fill_viridis(trans=log_trans(10), na.value="grey10") 
 
 pdf(file= paste0("output/figs/",genes[i],"_plots.pdf"), paper="a4")
 plot(p1)
