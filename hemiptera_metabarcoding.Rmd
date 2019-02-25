@@ -1,7 +1,7 @@
 ---
-title: "Hemiptera metabarcoding analysis"
-author: "Alexander Piper"
-date: "2018/12/11"
+title: "Developing a non-destructive metabarcoding protocol for detection of target insects in bulk trap catches"
+author: "J. Batovska, A.M. Piper, I. Valenzuela, J.P. Cunningham & M.J. Blacket"
+date: "2019/02/24"
 output:
   html_document: default
   pdf_document: default
@@ -30,7 +30,7 @@ read_chunk('scripts/summary_func.R')
 
 # Introduction 
 
-This is the R based reproducible workflow that performed the metabarcoding analyses presented for the manuscript " " by Batovska et al
+This is the R based reproducible workflow that performed the metabarcoding analyses presented for the manuscript "Developing a non-destructive metabarcoding protocol for detection of target insects in bulk trap catches" by J. Batovska, A.M. Piper, I. Valenzuela, J.P. Cunningham & M.J. Blacket
 
 The data that was analysed here includes 20 mock communities made up of Hemiptera, and 10 trap samples from a potato field. These were seperated over 3 runs on an illumina MiSeq
 
@@ -38,9 +38,9 @@ Run_1 - 15 pools of 100, 500, and 1000 insects
 Run_2 - 5 pools of 250 insects, run in duplicate to compare combinatorial indexing and unique-dual indexing
 Run_3 - 10 trap samples with varying numbers of insects
 
-3 genes were multiplexed in the one PCR amplification, and libraries were prepared from these
+3 seperate genes were multiplexed in the one PCR amplification, and libraries were prepared from these
 
-In order to handle process hte , in this pipeline the samples are read in and processed within a for-loop, so only one sample is fully loaded into memory at a time. This keeps memory requirements quite low, and multiple MiSeq runs, or a Hiseq lane can be processed on 8GB of memory (although more is nice!).
+In this analysis pipeline, each MiSeq run was processed processed within a for-loop, so parameters are kept consistant
 
 
 ## Set up
@@ -48,7 +48,7 @@ In order to handle process hte , in this pipeline the samples are read in and pr
 Load all requried packages
 
 ```{r load packages, message=FALSE, eval = FALSE }
-sapply(c("dada2", "phyloseq","ggplot2","ips", "DECIPHER", "data.table", "ggplot2", "tidyverse","Biostrings","ShortRead","scales", "psadd","ggpubr","seqinr", "viridis"), require, character.only = TRUE)
+sapply(c("dada2", "phyloseq","ggplot","ips", "DECIPHER", "data.table", "ggplot", "tidyverse","Biostrings","ShortRead","scales","stringdist","patchwork", "psadd","ggpubr","seqinr", "viridis"), require, character.only = TRUE)
 
 ```
 
@@ -267,11 +267,11 @@ saveRDS(seqtab.nochim, "output/rds/seqtab_final.rds") # CHANGE ME to where you w
 seqtab.nochim <- readRDS("output/rds/seqtab_final.rds")
 
 # Assign Kingdom:Genus taxonomy using RDP classifier
-tax <- assignTaxonomy(seqtab.nochim, "reference/merging/merged_arthropoda_rdp_genus.fa", multithread=TRUE, minBoot=80, outputBootstraps=FALSE)
+tax <- assignTaxonomy(seqtab.nochim, "reference/merged_arthropoda_rdp_genus.fa", multithread=TRUE, minBoot=80, outputBootstraps=FALSE)
 colnames(tax) <- c("Gene", "Phylum", "Class", "Order", "Family", "Genus")
 
 ##add species to taxtable using exact matching
-tax_plus <- addSpecies(tax, "reference/merging/merged_arthropoda_rdp_species.fa", allowMultiple=TRUE)
+tax_plus <- addSpecies(tax, "reference/merged_arthropoda_rdp_species.fa", allowMultiple=TRUE)
 
 ##Add SP. to species rank for those with only a genus rank assignmnet
 for(col in seq(7,ncol(tax_plus))) { 
@@ -290,83 +290,6 @@ head(taxa.print)
 
 # Write taxonomy table to disk
 saveRDS(tax_plus, "output/rds/tax_RDP_final.rds") 
-
-```
-
-## Assign taxonomy with IDTAXA
-
-
-```{r IDTAXA}
-library(DECIPHER); packageVersion("DECIPHER")
-
-seqtab.nochim <- readRDS("output/rds/seqtab_final.rds")
-trainingSet <- readRDS("reference/rdp_genus_rooted_idtaxa.rds")
-
-dna <- DNAStringSet(getSequences(seqtab.nochim)) # Create a DNAStringSet from the ASVs
-
-##Decide on threshold
-ids <- IdTaxa(dna, trainingSet, processors=1,threshold = 60, verbose=TRUE) 
-
-#plot(ids, trainingSet)
-
-
-#delete existing file
-cat("",file="idtaxa.csv")
-for (i in 1:length(ids)){
- lines <- as.data.table(t(cbind(ids[[i]]$taxon,ids[[i]]$confidence)))
- rownames(lines) <- c("taxa","confidence")
-write.table(lines,file="idtaxa.csv",sep=",",append=TRUE, col.names=FALSE)
-}
-
-ranks <-  c("Root","Kingdom", "Phylum","Class", "Order", "Family", "Genus") # ranks of interest
-# Convert the output object of class "Taxa" to a matrix analogous to the output from assignTaxonomy
-taxid <- t(sapply(ids, function(x) {
-        taxa <- x$taxon
-        taxa[startsWith(taxa, "unclassified_")] <- NA
-        taxa
-}))
-
-
-#tax_add <- addSpecies(taxid, "reference/pruned_arthropoda_rdp_species.fa", allowMultiple = TRUE)
-
-
-library(stringi)
-taxid <- stri_list2matrix(lapply(taxid, unlist), byrow=TRUE, fill="NA")
-taxid[startsWith(taxid, "NA")] <- NA
-
-#Add sequences and column names to matrix
-colnames(taxid) <- ranks; rownames(taxid) <- getSequences(seqtab.nochim)
-
-#Subset to remove the root rank
-taxid <- subset(taxid, select=c("Kingdom", "Phylum","Class", "Order", "Family", "Genus"))
-
-#Name object the same as the output of addSpecies
-tax_plus <- taxid
-
-##Add unclassified to species rank for those with only a genus rank assignmnet
-#for(col in seq(6,ncol(tax_plus))) {
-#  propagate <- is.na(tax_plus[,col]) & !is.na(tax_plus[,col-1])
-#  tax_plus[propagate,col:ncol(tax_plus)] <- paste(tax_plus[propagate,col-1], "unclassified", sep="_")
-#}
-
-##Add SP. to species rank for those with only a genus rank assignmnet
-for(col in seq(7,ncol(tax_plus))) { 
-  propagate <- is.na(tax_plus[,col]) & !is.na(tax_plus[,col-1])
-  tax_plus[propagate,col:ncol(tax_plus)] <-  "spp."
-}
-
-##join genus and species name in species rank column
-sptrue <- startsWith(tax_plus[,7], "spp.") %>% 
-  tidyr::replace_na(FALSE)
-tax_plus[sptrue,7] <- paste(tax_plus[sptrue,6],tax_plus[sptrue,7], sep="_")
-
-#Check Output
-taxa.print <- tax_plus # Removing sequence rownames for display only
-rownames(taxa.print) <- NULL
-head(taxa.print)
-
-# Write taxonomy table to disk
-saveRDS(tax_plus, "output/rds/tax_IdTaxa_final.rds") 
 
 ```
 
@@ -420,7 +343,7 @@ proportions = function(x){
 ##Function to transform data to proportions and set low proportions to zero
 filterfun = function(x){
   xprop = (x / sum(x)) #Convert to proportions
-  xprop[xprop < (1e-4)] <- 0 ## remove taxa under 0.0001, which is 0.01%
+  xprop[xprop < (0.00011664)] <- 0 ## remove taxa under this level - Derived from the index switching rate from 100/500/1000 pool run
   return(xprop)
 }
 
@@ -480,19 +403,18 @@ write.csv(sum_spp_filt, file = "output/csv/filtered/allgene_sppglom_filt_summari
 sum_gen_filt <- summarize_taxa(psFR, "Genus", "SampleID")
 sum_gen_filt <- spread(sum_gen_filt, key="SampleID", value="totalRA")
 write.csv(sum_gen_filt, file = "output/csv/filtered/allgene_genglom_filt_summarized.csv")
-
 ```
 
 #Plotting 
+
 
 # Add expected abundances for all samples 
 
 As part of the mock community analysis, we wish to determine taxonomic bias by looking at observed vs expected reads. To do this, we load dummy sequence, taxonomy, and sample data tables and create a seperate phyloseq object, which will later be merged
 
 This loads a dummy sequence table, taxonomy table, and sample data table and merges it into the existing phyloseq object
-
-```{r get expected , eval = FALSE}
-#Load expected information
+```{r Figure 1 - merged figure}
+#get expected abundances
 
 exp_seqtab <- as.matrix(read.csv("sample_data/expected/exp_seqtab.csv",row.names=1, header=TRUE))
 exp_taxtab <- as.matrix(read.csv("sample_data/expected/exp_taxtab.csv",row.names=1, header=TRUE))
@@ -507,111 +429,226 @@ exp_samdf <- exp_samdf[rownames(exp_seqtab), keep.cols]
 ps_exp <- phyloseq(tax_table(exp_taxtab), sample_data(exp_samdf),
                otu_table(exp_seqtab, taxa_are_rows = FALSE))
 
-```
-
-## Plots for all genes
-
-
-```{r Plot all genes, eval = FALSE}
-dir.create("output/figs")
-
-positions = c('Pool-01-100', 'Pool-02-100', 'Pool-03-100', 'Pool-04-100', 'Pool-05-100', 'Pool-06-500', 'Pool-07-500', 'Pool-08-500', 'Pool-09-500', 'Pool-10-500', 'Pool-11-1000', 'Pool-12-1000', 'Pool-13-1000', 'Pool-14-1000', 'Pool-15-1000', 'Pool-U1-250', 'Pool-U2-250', 'Pool-U3-250', 'Pool-U4-250', 'Pool-U5-250', 'Trap-01', 'Trap-02', 'Trap-03', 'Trap-04', 'Trap-05', 'Trap-06', 'Trap-07', 'Trap-08', 'Trap-09', 'Trap-10')
-
-positions_exp = c('Pool-01-100','Pool-01-100-exp',  'Pool-02-100','Pool-02-100-exp', 'Pool-03-100','Pool-03-100-exp', 'Pool-04-100','Pool-04-100-exp', 'Pool-05-100','Pool-05-100-exp', 'Pool-U1-250','Pool-U1-250-exp', 'Pool-U2-250','Pool-U2-250-exp', 'Pool-U3-250','Pool-U3-250-exp', 'Pool-U4-250','Pool-U4-250-exp', 'Pool-U5-250','Pool-U5-250-exp', 'Pool-06-500','Pool-06-500-exp', 'Pool-07-500','Pool-07-500-exp', 'Pool-08-500','Pool-08-500-exp', 'Pool-09-500','Pool-09-500-exp', 'Pool-10-500','Pool-10-500-exp', 'Pool-11-1000','Pool-11-1000-exp', 'Pool-12-1000','Pool-12-1000-exp', 'Pool-13-1000','Pool-13-1000-exp', 'Pool-14-1000','Pool-14-1000-exp', 'Pool-15-1000','Pool-15-1000-exp')
 
 #Figure 1 - Mock communities observed Vs Expected
 
-#Merge in expecteds 
-pstemp <- merge_phyloseq(psFR, ps_exp)
-pstemp <- transform_sample_counts(pstemp, fun = proportions)
-#pstemp = filter_taxa(pstemp, function(x) mean(x) > 0, TRUE) #Drop missing
+rm_c1 <-  c("Pool-C1-250","Pool-C2-250","Pool-C3-250","Pool-C4-250","Pool-C5-250")
+rm_c1_exp<- c("Pool-C1-250-exp","Pool-C2-250-exp","Pool-C3-250-exp","Pool-C4-250-exp","Pool-C5-250-exp")
+
+#Expected
 
 #Drop Kingdom column so we have 3 genes merged 
-tax_table(pstemp) <- tax_table(pstemp)[,2:7]
-
+tax_table(ps_exp) <- tax_table(ps_exp)[,2:7]
+ps_exp <- subset_samples(ps_exp, biome == "Laboratory")
+ps_exp <- subset_taxa(ps_exp, Phylum == "Arthropoda")
+ps_exp <- subset_samples(ps_exp, sample_names(ps_exp)!=rm_c1_exp)
+ps_exp = tax_glom(ps_exp, "Species", NArm = TRUE)
 
 ##Subset to mock communities
-psmock = subset_samples(pstemp, biome == "Laboratory")
-psmock = filter_taxa(psmock, function(x) mean(x) > 0, TRUE)
-rm_c1 <-  c("Pool-C1-250","Pool-C2-250","Pool-C3-250","Pool-C4-250","Pool-C5-250")
-psmock <- subset_samples(psmock, sample_names(psmock)!=rm_c1)
-rm_c1_exp<- c("Pool-C1-250-exp","Pool-C2-250-exp","Pool-C3-250-exp","Pool-C4-250-exp","Pool-C5-250-exp")
-psmock <- subset_samples(psmock, sample_names(psmock)!=rm_c1_exp)
-psmock = tax_glom(psmock, "Species", NArm = TRUE)
-psmock <- transform_sample_counts(psmock, fun= proportions) # Reset scale to 1 following NArm
-mdf <- psmelt(psmock)
 
+ps_exp = filter_taxa(ps_exp, function(x) mean(x) > 0, TRUE)
+ps_exp <- transform_sample_counts(ps_exp, fun= proportions) # Reset scale to 1 following NArm
+df_exp <- psmelt(ps_exp)
 
 #Reorder to pool composition
-mdf$SampleID <- factor(mdf$SampleID, levels = unique(mdf$SampleID[order(-mdf$pool_comp)]))
+df_exp$SampleID <- factor(df_exp$SampleID, levels = unique(df_exp$SampleID[order(-df_exp$pool_comp)]))
 
 #Plot horizontal mock communities
 
-p <- ggplot(mdf, aes(x= SampleID, y=Abundance,fill= Genus))
-p = p + geom_bar(stat = "identity", position = "stack", color = "NA")  
-p = p + theme(axis.text.x = element_text(angle = -90, hjust = 0))
-p = p + ggtitle(paste0("Relative abundance of taxa for all genes in mock communities"))
-p = p + xlab("Mock Community") 
-#p = p + scale_fill_viridis(discrete = TRUE)
-p = p + scale_fill_manual(values=c("#0c4687","#ae0707","#fa6e24","#3a9e82","#95cf77"))
-p = p + theme_pubclean()
-p1 =  p + scale_x_discrete(limits = positions_exp) + coord_flip()
+pexp <- ggplot(df_exp, aes(x= SampleID, y=Abundance,fill= Genus)) + 
+  geom_bar(stat = "identity", position = "stack", color = "NA")  + 
+  theme_pubclean() +
+    theme(axis.text.x = element_text(angle = -90, hjust = 0),
+        plot.title=element_text(hjust = 0.5)) + 
+  ggtitle(paste0("Expected")) + 
+  scale_fill_manual(values=c("#0c4687","#ae0707","#fa6e24","#3a9e82","#95cf77")) +
+  coord_flip()
 
-#plot obs/exp seperated 2 cols
-p2 = p + facet_wrap(.~experimental_factor, drop=TRUE, scales="free")  + coord_flip() #+ theme(axis.text.y = element_blank(), axis.ticks.y=element_blank())
-#plot obs/exp seperated 2 rows
-p3 = p + facet_wrap(~experimental_factor, nrow=2,ncol=1,drop=TRUE, scales="free") + coord_flip()
 
-##Calculate observed vs expected
-psgen = tax_glom(psmock, "Genus", NArm = TRUE)
-psgen <- transform_sample_counts(psgen, fun= proportions) # Reset scale to 1 following NArm
-psgen <- psmelt(psgen)
+## All genes merged
+psmock <- psFR
+#Drop Kingdom column so we have 3 genes merged 
+tax_table(psmock) <- tax_table(psmock)[,2:7]
+psmock <- subset_samples(psmock, biome == "Laboratory")
+psmock <- subset_taxa(psmock, Phylum == "Arthropoda")
+rm_c1 <-  c("Pool-C1-250","Pool-C2-250","Pool-C3-250","Pool-C4-250","Pool-C5-250")
+psmock <- subset_samples(psmock, sample_names(psmock)!=rm_c1)
+psmock = tax_glom(psmock, "Species", NArm = TRUE)
 
-mock_exp <- psgen %>%
-  filter(experimental_factor=="Exp") %>%
-  subset(select=c("Abundance","Sample","Genus"))
-mock_exp$Sample <-str_remove(mock_exp$Sample,pattern="-exp")
-colnames(mock_exp) <- c("Expected","Sample","Genus")
+##Subset to mock communities
 
-mock_obs <- psgen %>%
-  filter(experimental_factor=="O") %>%
-  subset(select=c("Abundance","Sample","Genus"))
-colnames(mock_obs) <- c("Observed","Sample","Genus")
+psmock = filter_taxa(psmock, function(x) mean(x) > 0, TRUE)
+psmock <- transform_sample_counts(psmock, fun= proportions) # Reset scale to 1 following NArm
+df_mock <- psmelt(psmock)
 
-expobs <- left_join(mock_exp,mock_obs, by=c("Sample","Genus")) %>%
-  filter(Observed>0)
+#Reorder to pool composition
+df_mock$SampleID <- factor(df_mock$SampleID, levels = unique(df_mock$SampleID[order(-df_mock$pool_comp)]))
 
-g <- ggplot(expobs,aes(x=Expected,y=Observed)) + geom_point(aes(colour=Genus)) + geom_abline(slope=1, intercept = 0) +
-  geom_segment(aes(xend = Expected, yend = Observed)) +
-  stat_cor(aes(color = Genus), label.x = 0.1)  + xlim(0,1) + ylim(0,1) + scale_colour_manual(values=c("#0c4687","#ae0707","#fa6e24","#3a9e82","#95cf77")) + theme_pubr() + theme(legend.position = "none") 
+#Plot horizontal mock communities
 
-##Get differences 
-expobs$bias <- expobs$Observed - expobs$Expected 
+pmock <- ggplot(df_mock, aes(x= SampleID, y=Abundance,fill= Genus)) + 
+  geom_bar(stat = "identity", position = "stack", color = "NA")  + 
+  theme_pubclean() +
+    theme(axis.text.x = element_text(angle = -90, hjust = 0),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        plot.title=element_text(hjust = 0.5),
+        legend.position = "none") + 
+  ggtitle(paste0("3 Genes")) + 
+  scale_fill_manual(values=c("#0c4687","#ae0707","#fa6e24","#3a9e82","#95cf77")) +
+  coord_flip()
 
-g2 <- ggplot(expobs,aes(x=Genus,y=bias)) + geom_bar(aes(fill=Genus),stat = "summary", fun.y = "mean") + geom_abline(slope=0, intercept = 0) + scale_fill_manual(values=c("#0c4687","#ae0707","#fa6e24","#3a9e82","#95cf77")) + theme_pubr() #+ coord_flip()
 
-#geom_smooth(method="lm",se=FALSE,aes(color=Genus),fullrange=TRUE) 
+#COI
+ps_coi <- subset_taxa(psFR, Gene == "COI-Eukaryota")
+ps_coi <- subset_taxa(ps_coi, Phylum == "Arthropoda")
+ps_coi = subset_samples(ps_coi, biome == "Laboratory")
+ps_coi = tax_glom(ps_coi, "Species", NArm = TRUE)
+tax_table(ps_coi) <- tax_table(ps_coi)[,2:7]
+
+##Transform data to proportions and set low proportions to zero
+psra_coi <- transform_sample_counts(ps_coi, fun = proportions)
+psra_coi = filter_taxa(psra_coi, function(x) mean(x) > 0, TRUE)
+
+#Remove combinatorial indexed samples
+psra_coi <- subset_samples(psra_coi, sample_names(psra_coi)!=rm_c1)
+psra_coi <- subset_samples(psra_coi, sample_names(psmock)!=rm_c1_exp)
+df_coi <- psmelt(psra_coi)
+
+#Reorder to pool composition
+df_coi$SampleID <- factor(df_coi$SampleID, levels = unique(df_coi$SampleID[order(-df_coi$pool_comp)]))
+
+#Plot COI mock communities
+
+pcoi <- ggplot(df_coi, aes(x= SampleID, y=Abundance,fill= Genus)) + 
+  geom_bar(stat = "identity", position = "stack", color = "NA")  + 
+  theme_pubclean() +
+    theme(axis.text.x = element_text(angle = -90, hjust = 0),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        plot.title=element_text(hjust = 0.5),
+        legend.position = "none") + 
+  ggtitle(paste0("COI")) + 
+  scale_fill_manual(values=c("#0c4687","#ae0707","#fa6e24","#3a9e82","#95cf77")) +
+  coord_flip()
+
+
+#18S
+ps_18s <- subset_taxa(psFR, Gene == "18s-Eukaryota")
+ps_18s <- subset_taxa(ps_18s, Phylum == "Arthropoda")
+ps_18s = subset_samples(ps_18s, biome == "Laboratory")
+ps_18s = tax_glom(ps_18s, "Species", NArm = TRUE)
+tax_table(ps_18s) <- tax_table(ps_18s)[,2:7]
+
+##Transform data to proportions and set low proportions to zero
+psra_18s <- transform_sample_counts(ps_18s, fun = proportions)
+psra_18s = filter_taxa(psra_18s, function(x) mean(x) > 0, TRUE)
+
+#Remove combinatorial indexed samples
+psra_18s <- subset_samples(psra_18s, sample_names(psra_18s)!=rm_c1)
+psra_18s <- subset_samples(psra_18s, sample_names(psmock)!=rm_c1_exp)
+df_18s <- psmelt(psra_18s)
+
+#Reorder to pool composition
+df_18s$SampleID <- factor(df_18s$SampleID, levels = unique(df_18s$SampleID[order(-df_18s$pool_comp)]))
+
+#Plot 18S mock communities
+
+p18s <- ggplot(df_18s, aes(x= SampleID, y=Abundance,fill= Genus)) + 
+  geom_bar(stat = "identity", position = "stack", color = "NA")  + 
+  theme_pubclean() +
+    theme(axis.text.x = element_text(angle = -90, hjust = 0),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        plot.title=element_text(hjust = 0.5),
+        legend.position = "none") + 
+  ggtitle(paste0("18S")) + 
+  scale_fill_manual(values=c("#0c4687","#ae0707","#fa6e24","#3a9e82","#95cf77")) +
+  coord_flip()
+
+
+#12s
+ps_12s <- subset_taxa(psFR, Gene == "12S-Eukaryota")
+ps_12s <- subset_taxa(ps_12s, Phylum == "Arthropoda")
+ps_12s = subset_samples(ps_12s, biome == "Laboratory")
+ps_12s = tax_glom(ps_12s, "Species", NArm = TRUE)
+tax_table(ps_12s) <- tax_table(ps_12s)[,2:7]
+
+##Transform data to proportions and set low proportions to zero
+psra_12s <- transform_sample_counts(ps_12s, fun = proportions)
+psra_12s = filter_taxa(psra_12s, function(x) mean(x) > 0, TRUE)
+
+#Remove combinatorial indexed samples
+psra_12s <- subset_samples(psra_12s, sample_names(psra_12s)!=rm_c1)
+psra_12s <- subset_samples(psra_12s, sample_names(psmock)!=rm_c1_exp)
+df_12s <- psmelt(psra_12s)
+
+#Reorder to pool composition
+df_12s$SampleID <- factor(df_12s$SampleID, levels = unique(df_12s$SampleID[order(-df_12s$pool_comp)]))
+
+#Plot 12s mock communities
+
+p12s <- ggplot(df_12s, aes(x= SampleID, y=Abundance,fill= Genus)) + 
+  geom_bar(stat = "identity", position = "stack", color = "NA")  + 
+  theme_pubclean() +
+    theme(axis.text.x = element_text(angle = -90, hjust = 0),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        plot.title=element_text(hjust = 0.5),
+        legend.position = "none") + 
+  ggtitle(paste0("12s")) + 
+  scale_fill_manual(values=c("#0c4687","#ae0707","#fa6e24","#3a9e82","#95cf77")) +
+  coord_flip()
+
+#Use patchwork to stich together
+Fig1 <- pexp + pmock + pcoi + p18s + p12s + plot_layout(ncol = 5)
+
+```
+
+# Figure 2: Detection table
+```{r figure 2}
+#Problem named taxa - Need to gsub names
+#Rhopalosiphum insertum/oxyacanthae <- Rhopalosiphum insertum
+#Rhopalosiphum rufiabdominale/rufiabdominalis <- Rhopalosiphum rufiabdominale
+#Lonchoptera bifurcata/uniseta
+#Lipaphis erysimi/pseudobrassicae
+
+positions = c('Pool-01-100', 'Pool-02-100', 'Pool-03-100', 'Pool-04-100', 'Pool-05-100', 'Pool-06-500', 'Pool-07-500', 'Pool-08-500', 'Pool-09-500', 'Pool-10-500', 'Pool-11-1000', 'Pool-12-1000', 'Pool-13-1000', 'Pool-14-1000', 'Pool-15-1000', 'Pool-U1-250', 'Pool-U2-250', 'Pool-U3-250', 'Pool-U4-250', 'Pool-U5-250', 'Trap-01', 'Trap-02', 'Trap-03', 'Trap-04', 'Trap-05', 'Trap-06', 'Trap-07', 'Trap-08', 'Trap-09', 'Trap-10')
 
 #Drop Kingdom column so we have 3 genes merged 
 psglom <- psFR
 tax_table(psglom) <- tax_table(psglom)[,2:7]
-psglom = tax_glom(psreal, "Species", NArm = TRUE)
+psglom = tax_glom(psglom, "Species", NArm = TRUE)
 psglom <- transform_sample_counts(psglom, fun= proportions) # Reset scale to 1 following NArm
 psglom = filter_taxa(psglom, function(x) mean(x) > 0, TRUE)
-p4 <- plot_heatmap(psglom, "NMDS", "bray", taxa.label="Species", taxa.order="Family") + theme_pubr()  + scale_x_discrete(limits = positions) + theme(axis.text.x = element_text(angle=60, hjust=1), axis.title.x=element_blank(), axis.title.y=element_blank(), legend.position="none") + scale_fill_viridis(trans=log_trans(10), na.value="grey10") 
 
+p4 <- plot_heatmap(psglom, "NMDS", "bray", taxa.label="Species", taxa.order="Family", na.value="white") +
+  theme_pubr()  +
+  scale_x_discrete(limits = positions) +
+  theme(axis.text.x = element_text(angle=60, hjust=1),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        legend.position="none") +
+  scale_fill_viridis(trans=log_trans(10),begin=0, na.value="white") 
 
-#axis.text.y = element_blank()
-
-##Presence absense for each gene 
- 
-  mdt = fast_melt(psFR)
+  
+#Plot which genes taxa was detected with
+mdt = fast_melt(psFR)
   summarydt = mdt[, list(totalRA = sum(RelativeAbundance)),
                   by = c("Gene","Order","Family", "Genus","Species", "SampleID", "taxaID")]
   summarydt <- summarydt[!is.na(summarydt$Species)]
   summarydt$totalRA[summarydt$totalRA > 0] <- 1
   
-  #Attempt rearragning  - Losing the duplicates Here!
+#Get taxanomic orders similar to heatmap
   rankcol = which(rank_names(psglom) %in% "Family")
   taxmat = as(tax_table(psglom)[, 1:rankcol], "matrix")
   taxa.order = apply(taxmat, 1, paste, sep = "", collapse = "")
@@ -622,33 +659,292 @@ p4 <- plot_heatmap(psglom, "NMDS", "bray", taxa.label="Species", taxa.order="Fam
   reorder <- full_join(taxa.order,summarydt,by="taxaID") 
 
   reorder$Species <- factor(reorder$Species, levels = unique(reorder$Species[order(reorder$seq)]))
-  
-p5 <- ggplot(reorder, aes(Gene, Species)) + geom_point(aes(colour = Gene),size=3) + theme(legend.position="none") + coord_fixed(ratio=.5) + theme(axis.text.x = element_text(angle=60, hjust=1), axis.title.x=element_blank(), axis.title.y=element_blank()) + theme_void() + theme(legend.position="none")
 
-pname <- ggplot(reorder, aes(x=c(1), Species) ) + geom_tile(aes(fill=reorder$Order))+ geom_text(label=reorder$Order) + theme_void() + theme(legend.position="none")
-
-
-ggarrange(pname,p5,p4,nrow=1,ncol=3,widths = c(1,1,5),align="h")
-
-#Save plots to file
-pdf(file= "output/figs/allgenes_plots.pdf", paper="a4")
-plot(p1)
-plot(p2)
-plot(p3)
-plot(g)
-plot(g2)
-plot(ggarrange(pname,p5,p4,nrow=1,ncol=3,widths = c(1,4,5),align="h"))
-dev.off()
+p5 <- ggplot(reorder, aes(Gene, Species)) + geom_point(aes(colour = Gene),size=3) + theme(legend.position="none") + coord_fixed(ratio=.5) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=60, hjust=1),
+        axis.title.x=element_blank(), 
+        axis.title.y=element_blank()) + 
+  theme(legend.position="none")
 
 
-#Problem named taxa - Need to gsub names
-#Rhopalosiphum insertum/oxyacanthae <- Rhopalosiphum insertum
-#Rhopalosiphum rufiabdominale/rufiabdominalis <- Rhopalosiphum rufiabdominale
-#Lonchoptera bifurcata/uniseta
-#Lipaphis erysimi/pseudobrassicae
+#Plot higher order ranks
+pname <- ggplot(reorder, aes(x=c(1), Species) ) + geom_tile(aes(fill=reorder$Order),alpha=0.5)+ geom_text(label=reorder$Order) + theme_void() + theme(legend.position="none")
+
+
+Fig2 <- pname + p5 + p4 + plot_layout(ncol = 3, widths=c(1,2,3))
 
 
 ```
+
+
+Index switching figures
+```{r}
+##CREATE ALL COMBINATIONS
+
+#Read in original sample sheet
+SampleSheet <- read_csv("demulti/SampleSheet_Run6.csv",skip=20)
+
+I7_Index_ID <- SampleSheet$index
+I5_Index_ID <- SampleSheet$index2
+
+combos <- unique(expand.grid(I7_Index_ID, I5_Index_ID))
+combos$name <- paste0(combos$Var1,"_",combos$Var2)
+
+
+#exclude real combinations
+
+real <- as.data.frame(cbind(I7_Index_ID,I5_Index_ID,SampleSheet$Sample_ID))
+real$name <- paste0(real$I7_Index_ID,"_",real$I5_Index_ID)
+
+unexpected <- combos[!combos$name %in% real$name, ]
+
+#write.csv(unexpected,file="demulti/Run6_unexpected.csv")
+
+##READ DEMULTIPLEXED ALL
+
+demulti <- read.table("demulti/readcount_mock.txt")
+
+unique_sample <- demulti$V1 %>%
+  str_replace_all("-","_") %>%
+  str_split_fixed("_", n=3) 
+
+
+unique_sample <- paste0(unique_sample[,1],"_",unique_sample[,2])
+
+demulti$V1 <- unique_sample
+
+colnames(demulti) <- c("sample","reads","unique.reads","unique.perc","topseq","topseq.freq","topseq.perc")
+
+demulti <- demulti %>%
+  distinct(sample, .keep_all=TRUE)
+
+#demulti$sample[1:10] <- paste0(I7_Index_ID,"_",I5_Index_ID)
+
+colnames(real)[3] <- "sample"
+
+demulti <- left_join(demulti,real,by="sample")
+
+demulti$name[is.na(demulti$name)] <- demulti$sample[is.na(demulti$name)]
+
+##Summary of index switching rate
+exp_rate <- demulti %>% 
+  filter(str_detect(sample,paste(c("Pool", "Trap"),collapse = '|')))
+obs_rate <- demulti %>% 
+  filter(!str_detect(sample,paste(c("Pool", "Trap"),collapse = '|')))
+
+switch_rate <- (sum(obs_rate$reads)/sum(exp_rate$reads)) *100
+
+##plot index switching
+
+plot <- demulti %>%
+  separate(name,c("i7","i5"),"_")%>%
+  select(i7,i5,reads)
+
+searchi5 <- exp_rate$I5_Index_ID
+searchi7 <-exp_rate$I7_Index_ID
+replacement <- exp_rate$sample
+
+
+
+i=1
+for (i in 1:length(replacement))
+{
+  plot$i7 <- as.character(plot$i7) %>%
+  str_replace(pattern= as.character(searchi7[i]), replacement=paste0(replacement[i],"-",as.character(searchi7[i]))) 
+  
+  plot$i5 <- as.character(plot$i5) %>%
+    str_replace(pattern= as.character(searchi5[i]), replacement=paste0(replacement[i],"-",as.character(searchi5[i]))) 
+}
+orderi7 <- c("Pool_1-GACGAGAT", "Pool_2-TAGTGGCA",  "Pool_3-CATTAACG", "Pool_4-TCGTTGAA", "Pool_5-TAGTACGC", "Pool_6-TTCACCGT",
+             "Pool_7-AGGACAGT", "Pool_8-AATCGTGG",  "Pool_9-TGAATGCC",  "Pool_10-GTGCAATG", "Pool_11-AGTGGCAT",  "Pool_12-AGTCTACC",
+             "Pool_13-ATCGGTAG",  "Pool_14-CGTATGAT",  "Pool_15-CTGTCGTA")
+
+orderi5 <- c("Pool_1-GACTTCGT", "Pool_2-AATCTCGT",  "Pool_3-TTGCCACT", "Pool_4-GCGTTAAT", "Pool_5-CTTCAACG", "Pool_6-AGCGTACT",
+             "Pool_7-TACGGTGA", "Pool_8-AACTGTCC",  "Pool_9-GACTGATA",  "Pool_10-ACATCTGC", "Pool_11-ACGTTAGG",  "Pool_12-CACTAGAC",
+             "Pool_13-TGGCATTC",  "Pool_14-ACATTGCA",  "Pool_15-TATGCCAC")
+
+
+plot$i7 <- factor(plot$i7, levels = orderi7)
+plot$i5 <- factor(plot$i5 , levels = rev(orderi5))
+
+Fig3 <- ggplot(data = plot, aes(x = i7, y = i5), stat="identity") +
+  geom_tile(aes(fill = reads),alpha=0.9)  + scale_fill_viridis(name = "reads", begin=0.1,trans = "log10")  + geom_text(label=demulti$reads) + 
+  theme(axis.text.x = element_text(angle=90, hjust=1), plot.title=element_text(hjust = 0.5), plot.subtitle =element_text(hjust = 0.5), legend.position = "none") +
+  labs(title= "100-500-1000 Pool Samples", subtitle = paste0("Index switch rate for the run: ", sprintf("%1.2f%%", switch_rate)))
+
+
+```
+
+
+```{r supplementary - Index switching}
+
+##Get edit distance for used combinations
+
+#Set colour table
+colorTable <- designer.colors(8, c( "red","yellow", "white"),
+                              x = c(0, 5, 8) / 140)
+col_order <- SampleSheet$Sample_Name
+# Hamming i7
+
+  hami7 <- as.tibble(stringdistmatrix(SampleSheet$index, SampleSheet$index, "hamming"))
+  
+  #colnames(hami7) <- paste0(SampleSheet$Sample_Name, " - ", SampleSheet$index)
+  #hami7$row <- paste0(SampleSheet$Sample_Name, " - ", SampleSheet$index)
+  colnames(hami7) <- SampleSheet$Sample_Name
+  hami7$row <- SampleSheet$Sample_Name
+  hami7 <- hami7 %>% 
+    gather(key="col","value",-row)
+  
+
+  hami7$row <- factor(hami7$row, levels = col_order)
+  hami7$col <- factor(hami7$col, levels = rev(col_order))
+  
+phami7 <- ggplot(data = hami7, aes(x = row, y = col), stat="identity")  + 
+  geom_tile(data = hami7,aes(fill = as.factor(value))) + 
+    scale_fill_manual(values = colorTable) + 
+    geom_text(label=hami7$value)   +  
+  theme(axis.text.x = element_text(angle=90, hjust=1)) + theme(plot.title=element_text(hjust = 0.5), plot.subtitle =element_text(hjust = 0.5), legend.position = "none", axis.title.x=element_blank(), axis.title.y=element_blank()) +
+  labs(title= "Hamming distance for i7 index")  
+
+
+# Hamming i5
+
+hami5 <- as.tibble(stringdistmatrix(SampleSheet$index2, SampleSheet$index2, "hamming"))
+
+#colnames(hami5) <- paste0(SampleSheet$Sample_Name, " - ", SampleSheet$index2)
+#hami5$row <- paste0(SampleSheet$Sample_Name, " - ", SampleSheet$index2)
+colnames(hami5) <- SampleSheet$Sample_Name
+hami5$row <- SampleSheet$Sample_Name
+
+hami5 <- hami5 %>% 
+  gather(key="col","value",-row)
+
+
+hami5$row <- factor(hami5$row, levels = col_order)
+hami5$col <- factor(hami5$col, levels = rev(col_order))
+
+phami5 <- ggplot(data = hami5, aes(x = row, y = col), stat="identity")  + 
+  geom_tile(data = hami5,aes(fill = as.factor(value))) + 
+  scale_fill_manual(values = colorTable) + 
+  geom_text(label=hami5$value)   +  
+  theme(axis.text.x = element_text(angle=90, hjust=1)) + theme(plot.title=element_text(hjust = 0.5), plot.subtitle =element_text(hjust = 0.5), legend.position = "none", axis.title.x=element_blank(), axis.title.y=element_blank()) +
+  labs(title= "Hamming distance for i5 index")  
+
+# Levenshtein i7
+
+lvi7 <- as.tibble(stringdistmatrix(SampleSheet$index, SampleSheet$index, "lv"))
+
+#colnames(lvi7) <- paste0(SampleSheet$Sample_Name, " - ", SampleSheet$index)
+#lvi7$row <- paste0(SampleSheet$Sample_Name, " - ", SampleSheet$index)
+colnames(lvi7) <- SampleSheet$Sample_Name
+lvi7$row <- SampleSheet$Sample_Name
+lvi7 <- lvi7 %>% 
+  gather(key="col","value",-row)
+
+
+lvi7$row <- factor(lvi7$row, levels = col_order)
+lvi7$col <- factor(lvi7$col, levels = rev(col_order))
+
+plvi7 <- ggplot(data = lvi7, aes(x = row, y = col), stat="identity")  + 
+  geom_tile(data = lvi7,aes(fill = as.factor(value))) + 
+  scale_fill_manual(values = colorTable) + 
+  geom_text(label=lvi7$value)   +  
+  theme(axis.text.x = element_text(angle=90, hjust=1)) + theme(plot.title=element_text(hjust = 0.5), plot.subtitle =element_text(hjust = 0.5), legend.position = "none", axis.title.x=element_blank(), axis.title.y=element_blank()) +
+  labs(title= "Levenshtein distance for i7 index")  
+
+
+# Levenshtein i5
+
+lvi5 <- as.tibble(stringdistmatrix(SampleSheet$index2, SampleSheet$index2, "lv"))
+
+#colnames(lvi5) <- paste0(SampleSheet$Sample_Name, " - ", SampleSheet$index2)
+#lvi5$row <- paste0(SampleSheet$Sample_Name, " - ", SampleSheet$index2)
+colnames(lvi5) <- SampleSheet$Sample_Name
+lvi5$row <- SampleSheet$Sample_Name
+
+lvi5 <- lvi5 %>% 
+  gather(key="col","value",-row)
+
+lvi5$row <- factor(lvi5$row, levels = col_order)
+lvi5$col <- factor(lvi5$col, levels = rev(col_order))
+
+plvi5 <- ggplot(data = lvi5, aes(x = row, y = col), stat="identity")  + 
+  geom_tile(data = lvi5,aes(fill = as.factor(value))) + 
+  scale_fill_manual(values = colorTable) + 
+  geom_text(label=lvi5$value)   +  
+  theme(axis.text.x = element_text(angle=90, hjust=1)) + theme(plot.title=element_text(hjust = 0.5), plot.subtitle =element_text(hjust = 0.5), legend.position = "none", axis.title.x=element_blank(), axis.title.y=element_blank()) +
+  labs(title= "Levenshtein distance for i5 index")  
+
+
+
+#Create multiplot
+phami7 + phami5 + plvi7 + plvi5 + plot_layout(ncol = 2)
+  
+
+
+##i7 colour balancing
+
+  spliti7 <- str_split(I7_Index_ID, "", n = Inf, simplify = FALSE)
+  spliti7 <- as.tibble(t(data.frame(spliti7)))
+  colnames(spliti7) <- c(1:8)
+  
+  spliti7$Name <- I7_Index_ID
+  
+  spliti7 <- spliti7 %>% 
+    gather(Pos,Base,-Name)
+  
+  #Plots
+  
+  pspliti7 <-ggplot(data=spliti7, aes(x=Pos, y=1, fill=Base))+
+    geom_bar(stat="identity", position=position_fill()) + theme_pubclean()  +   scale_fill_manual(values= c("Red","dodgerblue",  "Yellow", "lawngreen") ) + 
+    ggtitle("Colour balance for i7 read") + theme(plot.title=element_text(hjust = 0.5), axis.title.y=element_blank()) +
+    xlab("Position within index read") + ylab("Base Composition")
+  
+#i5 Colour balancing
+  spliti5 <- str_split(I5_Index_ID, "", n = Inf, simplify = FALSE)
+  spliti5 <- as.tibble(t(data.frame(spliti5)))
+  colnames(spliti5) <- c(1:8)
+  
+  spliti5$Name <- I7_Index_ID
+  
+  spliti5 <- spliti5 %>% 
+    gather(Pos,Base,-Name)
+  
+  #Plots
+  
+  pspliti5 <-ggplot(data=spliti5, aes(x=Pos, y=1, fill=Base))+
+    geom_bar(stat="identity", position=position_fill()) + theme_pubclean()  +   scale_fill_manual(values= c("Red","dodgerblue",  "Yellow", "lawngreen") ) + 
+    ggtitle("Colour balance for i5 read") + theme(plot.title=element_text(hjust = 0.5), axis.title.y=element_blank()) +
+    xlab("Position within index read") + ylab("Base Composition")
+
+  #Create multiplot
+phami7 + phami5 + plvi7 + plvi5 + pspliti7 + pspliti5 + plot_layout(ncol = 2, nrow=3)
+
+
+##Plot barcode plates
+
+plates <- read_csv("demulti/qbarcodeplatescsv.csv")
+
+
+plates$index <- factor(plates$index , levels=(unique(plates$index))[order(plates$Column)])
+plates$index2 <- factor(plates$index2 , levels=(unique(plates$index2))[order(plates$Row)])
+
+gplate <-ggplot(data=plates, aes(x=index, y=reorder(index2, desc(index2))))  +
+  geom_tile(aes(fill=index2),alpha=0.5,colour="black") +
+  geom_tile(aes(fill=index),alpha=0.5,colour="black") +
+  geom_tile(aes(fill=Used),alpha=1,colour="black") +
+  geom_text(aes(label = paste0(plates$Row,plates$Column)),show.legend = FALSE) +  # adding text for first course
+    theme(plot.title=element_text(hjust = 0.5), plot.subtitle =element_text(hjust = 0.5), legend.position = "none",axis.text.x = element_text(angle=90, hjust=1)) +
+  labs(title= "mpxPE Barcode plate layouts") + scale_fill_viridis(name = "reads", discrete = TRUE) +
+  scale_x_discrete(breaks=(plates$index)[order(plates$Column)]) +
+  scale_y_discrete(breaks=(plates$index2)) +  xlab("i7 Index") + ylab("i5 Index") +
+  facet_wrap(~Plate, nrow=2,ncol=2, drop=TRUE,scales="free")
+
+gplate +  facet_grid(~Plate,scales="free")
+```
+
+
 
 
 ## Supplementary Figures - Plot each gene seperately
@@ -662,7 +958,6 @@ genes <- as.vector(genes$Gene)
 genes <- genes[!is.na(genes)]
 
 for (i in seq(along=genes)){
-  ####PROBLEM HERE WILL BE THE MOCKS!
 print(genes[i])
 ps_gene = subset_taxa(psFR, Gene == genes[i])
 ps_gene = subset_taxa(ps_gene, Phylum == "Arthropoda")
@@ -682,7 +977,7 @@ write.csv(gen_summary, file = paste0("output/csv/seperategenes/",genes[i],"_geng
 
 ##Transform data to proportions and set low proportions to zero - NEEDED TO REMOVE INDEX SWITCHING
 
-psra_gene <- transform_sample_counts(ps_genexp, fun = filterfun)
+psra_gene <- transform_sample_counts(ps_genexp, fun = proportions)
 ##Remove zero counts
 psra_gene = filter_taxa(psra_gene, function(x) mean(x) > 0, TRUE) #Used to be 1e-6
 
@@ -755,7 +1050,6 @@ g2 <- ggplot(expobs,aes(x=Genus,y=bias)) + geom_bar(aes(fill=Genus),stat = "summ
 
 pdf(file= paste0("output/figs/",genes[i],"_plots.pdf"), paper="a4")
 plot(p1)
-plot(p2)
 plot(g)
 plot(g2)
 plot(p3)
