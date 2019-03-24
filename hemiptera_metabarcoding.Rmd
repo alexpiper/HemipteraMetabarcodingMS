@@ -3,8 +3,17 @@ title: "Developing a non-destructive metabarcoding protocol for detection of tar
 author: "J. Batovska, A.M. Piper, I. Valenzuela, J.P. Cunningham & M.J. Blacket"
 date: "2019/02/24"
 output:
-  html_document: default
+  html_document:
+    highlighter: null
+    theme: "flatly"
+    code_download: true
+    toc: true
+    toc_float: 
+      collapsed: false
+      smooth_scroll: true
+    df_print: paged    
   pdf_document: default
+  
 ---
 
 
@@ -260,7 +269,7 @@ saveRDS(seqtab.nochim, "output/rds/seqtab_final.rds") # CHANGE ME to where you w
 
 ```
 
-### Dada2 assign tax
+### Assign Taxonomy
 
 ```{r}
 
@@ -295,7 +304,7 @@ saveRDS(tax_plus, "output/rds/tax_RDP_final.rds")
 
 ## Make phyloseq 
 
-Following taxonomic assignment, both the sequence table and taxonomic table are passed to the Phyloseq R package for further community analysis and visualisation of data. This involves loading in the sample info csv to merge with the sequence and taxonomy tables
+Following taxonomic assignment, the sequence table and taxonomic table are merged into a single phyloseq object alongside the sample info csv.
 
 ```{r create PS, eval = FALSE}
 seqtab.nochim <- readRDS("output/rds/seqtab_final.rds")
@@ -321,8 +330,11 @@ ps <- phyloseq(tax_table(tax_plus), sample_data(samdf),
 saveRDS(ps, "output/rds/ps_rdp.rds") 
 ```
 
-
 ## Output tables of results
+
+Proportions function is defined, and filtering function which removes all taxa under 0.00011664 which was established by looking at expected vs observed reads, and then converts them to proportions
+
+A number of output tables are made at this stage
 
 ```{r output table, eval = FALSE}
 ps <- readRDS("output/rds/ps_rdp.rds")
@@ -403,16 +415,34 @@ write.csv(sum_spp_filt, file = "output/csv/filtered/allgene_sppglom_filt_summari
 sum_gen_filt <- summarize_taxa(psFR, "Genus", "SampleID")
 sum_gen_filt <- spread(sum_gen_filt, key="SampleID", value="totalRA")
 write.csv(sum_gen_filt, file = "output/csv/filtered/allgene_genglom_filt_summarized.csv")
+
+##Write out data for each gene
+for (i in seq(along=genes)){
+print(genes[i])
+ps_gene = subset_taxa(psFR, Gene == genes[i])
+tax_table(ps_gene) <- tax_table(ps_gene)[,2:7]
+
+#Summary export
+sp_summary <- summarize_taxa(ps_gene, "Species", "SampleID")
+sp_summary <- spread(sp_summary, key="SampleID", value="totalRA")
+write.csv(sp_summary, file = paste0("output/csv/seperategenes/",genes[i],"_sppglom_filt_summarized.csv"))
+
+gen_summary <- summarize_taxa(ps_gene, "Genus", "SampleID")
+gen_summary <- spread(gen_summary, key="SampleID", value="totalRA")
+write.csv(gen_summary, file = paste0("output/csv/seperategenes/",genes[i],"_genglom_filt_summarized.csv"))
+}
+
 ```
 
-#Plotting 
+# Plotting Figures
 
 
-# Add expected abundances for all samples 
+## Figure 1 - Bias in mock communities
 
 As part of the mock community analysis, we wish to determine taxonomic bias by looking at observed vs expected reads. To do this, we load dummy sequence, taxonomy, and sample data tables and create a seperate phyloseq object, which will later be merged
 
 This loads a dummy sequence table, taxonomy table, and sample data table and merges it into the existing phyloseq object
+
 ```{r Figure 1 - merged figure}
 #get expected abundances
 
@@ -464,7 +494,6 @@ pexp <- ggplot(df_exp, aes(x= SampleID, y=Abundance,fill= Genus)) +
   scale_fill_manual(values=c("#0c4687","#ae0707","#fa6e24","#3a9e82","#95cf77")) +
   coord_flip()
 
-
 ## All genes merged
 psmock <- psFR
 #Drop Kingdom column so we have 3 genes merged 
@@ -500,7 +529,6 @@ pmock <- ggplot(df_mock, aes(x= SampleID, y=Abundance,fill= Genus)) +
   scale_fill_manual(values=c("#0c4687","#ae0707","#fa6e24","#3a9e82","#95cf77")) +
   coord_flip()
 
-
 #COI
 ps_coi <- subset_taxa(psFR, Gene == "COI-Eukaryota")
 ps_coi <- subset_taxa(ps_coi, Phylum == "Arthropoda")
@@ -535,7 +563,6 @@ pcoi <- ggplot(df_coi, aes(x= SampleID, y=Abundance,fill= Genus)) +
   ggtitle(paste0("COI")) + 
   scale_fill_manual(values=c("#0c4687","#ae0707","#fa6e24","#3a9e82","#95cf77")) +
   coord_flip()
-
 
 #18S
 ps_18s <- subset_taxa(psFR, Gene == "18s-Eukaryota")
@@ -613,7 +640,8 @@ Fig1 <- pexp + pmock + pcoi + p18s + p12s + plot_layout(ncol = 5)
 
 ```
 
-# Figure 2: Detection table
+## Figure 2: Detection heatmap for all samples
+
 ```{r figure 2}
 #Problem named taxa - Need to gsub names
 #Rhopalosiphum insertum/oxyacanthae <- Rhopalosiphum insertum
@@ -674,11 +702,13 @@ pname <- ggplot(reorder, aes(x=c(1), Species) ) + geom_tile(aes(fill=reorder$Ord
 
 Fig2 <- pname + p5 + p4 + plot_layout(ncol = 3, widths=c(1,2,3))
 
-
 ```
 
 
-Index switching figures
+# Supplementary Figures
+
+## Supplementary figures
+
 ```{r}
 ##CREATE ALL COMBINATIONS
 
@@ -708,7 +738,6 @@ demulti <- read.table("demulti/readcount_mock.txt")
 unique_sample <- demulti$V1 %>%
   str_replace_all("-","_") %>%
   str_split_fixed("_", n=3) 
-
 
 unique_sample <- paste0(unique_sample[,1],"_",unique_sample[,2])
 
@@ -744,7 +773,6 @@ plot <- demulti %>%
 searchi5 <- exp_rate$I5_Index_ID
 searchi7 <-exp_rate$I7_Index_ID
 replacement <- exp_rate$sample
-
 
 
 i=1
@@ -876,11 +904,8 @@ plvi5 <- ggplot(data = lvi5, aes(x = row, y = col), stat="identity")  +
   theme(axis.text.x = element_text(angle=90, hjust=1)) + theme(plot.title=element_text(hjust = 0.5), plot.subtitle =element_text(hjust = 0.5), legend.position = "none", axis.title.x=element_blank(), axis.title.y=element_blank()) +
   labs(title= "Levenshtein distance for i5 index")  
 
-
-
 #Create multiplot
 phami7 + phami5 + plvi7 + plvi5 + plot_layout(ncol = 2)
-  
 
 
 ##i7 colour balancing
@@ -975,7 +1000,6 @@ gen_summary <- summarize_taxa(summary, "Genus", "SampleID")
 gen_summary <- spread(gen_summary, key="SampleID", value="totalRA")
 write.csv(gen_summary, file = paste0("output/csv/seperategenes/",genes[i],"_genglom_filt_summarized.csv"))
 
-##Transform data to proportions and set low proportions to zero - NEEDED TO REMOVE INDEX SWITCHING
 
 psra_gene <- transform_sample_counts(ps_genexp, fun = proportions)
 ##Remove zero counts

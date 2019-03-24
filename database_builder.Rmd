@@ -197,9 +197,9 @@ if (i < chunks){
 ```
 
 
-## Trim sequences using Geneious Prime
+## Trim sequences using Geneious 
 
-Sequences need to be trimmed to primer regions, as there are millions of sequences a de-novo alignment of these is impractical. Instead sequences were mapped to Hemipteran reference sequences (Mitogenome or long rRNA sequence) in Geneious Prime, and regions between primers were extracted.
+Sequences need to be trimmed to primer regions, as there are millions of sequences a de-novo alignment of these is impractical. Instead sequences were mapped to Hemipteran reference sequences (Mitogenome or long rRNA sequence) in Geneious, and regions between primers were extracted.
 
 
 ## Retrieve taxonomy for genbank sequences
