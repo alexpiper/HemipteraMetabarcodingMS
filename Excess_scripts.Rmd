@@ -1,0 +1,52 @@
+---
+title: "Extra_scripts"
+author: "Alexander Piper"
+date: "9 May 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r pre and post filt}
+
+ps_unfiltered <- ps_arthropod
+#Drop Kingdom column to merge results for 3 loci
+tax_table(ps_unfiltered) <- tax_table(ps_unfiltered)[,2:7]
+
+#Subset to mock communities
+ps_unfiltered <- subset_samples(ps_unfiltered, biome == "Laboratory")
+ps_unfiltered <- subset_taxa(ps_unfiltered, Phylum == "Arthropoda")
+rm_c1 <-  c("Pool-C1-250","Pool-C2-250","Pool-C3-250","Pool-C4-250","Pool-C5-250")
+ps_unfiltered <- subset_samples(ps_unfiltered, sample_names(ps_unfiltered)!=rm_c1)
+ps_unfiltered = tax_glom(ps_unfiltered, "Species", NArm = TRUE)
+
+ps_unfiltered = filter_taxa(ps_unfiltered, function(x) mean(x) > 0, TRUE)
+ps_unfiltered <- transform_sample_counts(ps_unfiltered, fun= proportions) # Reset scale to 1 following NArm
+df_unfiltered <- psmelt(ps_unfiltered)
+
+#Reorder to pool composition
+df_unfiltered$SampleID <- factor(df_unfiltered$SampleID, levels = unique(df_unfiltered$SampleID[order(-df_unfiltered$pool_comp)]))
+
+Fig_unf <- ggplot(df_unfiltered, aes(x= SampleID, y=Abundance,fill= Genus)) + 
+  geom_bar(stat = "identity", position = "stack", color = "NA")  + 
+  theme_pubclean() +
+    theme(axis.text.x = element_text(angle = -90, hjust = 0),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        plot.title=element_text(hjust = 0.5),
+        legend.position = "none") + 
+  ggtitle(paste0("3 loci unfiltered")) + 
+  scale_fill_manual(values=c("#0c4687","#ae0707","#fa6e24","#3a9e82","#95cf77")) +
+  coord_flip()
+
+
+fig_filt <- Fig1a + Fig1b + Fig_unf
+```
+
+
+
+```

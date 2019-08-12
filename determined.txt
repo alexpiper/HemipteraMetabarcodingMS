@@ -1,0 +1,15 @@
+Pool_10_500_S10_R1_001.fastq.gz 807060
+Pool_11_1000_S11_R1_001.fastq.gz 855997
+Pool_12_1000_S12_R1_001.fastq.gz 1068715
+Pool_13_1000_S13_R1_001.fastq.gz 1773647
+Pool_14_1000_S14_R1_001.fastq.gz 1198812
+Pool_15_1000_S15_R1_001.fastq.gz 1423279
+Pool_1_100_S1_R1_001.fastq.gz 478705
+Pool_2_100_S2_R1_001.fastq.gz 737998
+Pool_3_100_S3_R1_001.fastq.gz 950692
+Pool_4_100_S4_R1_001.fastq.gz 634017
+Pool_5_100_S5_R1_001.fastq.gz 1817929
+Pool_6_500_S6_R1_001.fastq.gz 647776
+Pool_7_500_S7_R1_001.fastq.gz 1908370
+Pool_8_500_S8_R1_001.fastq.gz 923807
+Pool_9_500_S9_R1_001.fastq.gz 572779

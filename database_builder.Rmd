@@ -18,7 +18,7 @@ opts_knit$set(root.dir = 'C:/Users/ap0y/Dropbox/Work Projects/PHD/Metabarcoding/
 opts_chunk$set(dev = 'png')
 
 #load scripts from scripts folder
-read_chunk('scripts/summary_func.R')
+read_chunk('scripts/helper_functions.R')
 ```
 
 
@@ -475,91 +475,4 @@ db_12S <- read.fasta("reference/Arthropoda_12S.fa",strip.desc = FALSE, as.string
 ## Write merged genus fasta
 write.fasta(c(genus_COI, genus_18S,genus_12S ), c(getName(genus_12S),getName(genus_12S),getName(genus_12S)), "reference/merged_arthropoda.fa", as.string=FALSE, nbchar=5000)
 
-```
-
-# Prune sequences & Train IDTaxa classfier
-
-```{r}
-
-# specify the path to your file of training sequences:
-seqs_path <- "reference/merged_arthropoda.fa"
-# read the sequences into memory
-seqs <- readDNAStringSet(seqs_path)
-
-# As taxonomies are encoded in the sequence names rather than a separate file, use:
-taxid <- NULL
-seqs <- RemoveGaps(seqs)
-seqs <- OrientNucleotides(seqs)
-
-# obtain the taxonomic assignments
-groups <- names(seqs) # sequence names
-
-# assume the taxonomy begins with 'Root;' 
-groups <- gsub("(.*)(Root;)", "\\2", groups) # extract the group label - May need to use a wild card for the root label as its split by 3 genes!
-groupCounts <- table(groups)
-u_groups <- names(groupCounts) # unique groups
-length(u_groups) # number of groups
- 
-# Pruning training set
-
-maxGroupSize <- 10 # max sequences per label (>= 1)
-remove <- logical(length(seqs))
-for (i in which(groupCounts > maxGroupSize)) {
-  index <- which(groups==u_groups[i])
-  keep <- sample(length(index),
-  maxGroupSize)
-  remove[index[-keep]] <- TRUE
-}
-sum(remove) # number of sequences eliminated
-
-
-# Training the classifier
-maxIterations <- 3 # must be >= 1
-allowGroupRemoval <- TRUE
-probSeqsPrev <- integer() # suspected problem sequences from prior iteration
-for (i in seq_len(maxIterations)) {
-  cat("Training iteration: ", i, "\n", sep="")
-  # train the classifier
-  trainingSet <- LearnTaxa(seqs[!remove],
-  names(seqs)[!remove],
-  taxid)
-  
-  # look for problem sequences
-  probSeqs <- trainingSet$problemSequences$Index
-  if (length(probSeqs)==0) {
-    cat("No problem sequences remaining.\n")
-    break
-  } else if (length(probSeqs)==length(probSeqsPrev) &&
-  all(probSeqsPrev==probSeqs)) {
-    cat("Iterations converged.\n")
-    break
-    }
-  if (i==maxIterations)
-  break
-  probSeqsPrev <- probSeqs
-  
-  # remove any problem sequences
-  index <- which(!remove)[probSeqs]
-  remove[index] <- TRUE # remove all problem sequences
-  if (!allowGroupRemoval) {
-    # replace any removed groups
-    missing <- !(u_groups %in% groups[!remove])
-    missing <- u_groups[missing]
-    if (length(missing) > 0) {
-    index <- index[groups[index] %in% missing]
-    remove[index] <- FALSE # don't remove
-    }
-  }
-}
-sum(remove) # total number of sequences eliminated
-length(probSeqs) # number of remaining problem sequences
-
-# View the results of training
-
-trainingSet
-plot(trainingSet)
-
-#Write out training set
-
-saveRDS(trainingSet,file="reference/merged_arthropoda_idtaxa.rds")
 ```

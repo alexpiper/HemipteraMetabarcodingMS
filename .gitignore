@@ -1,5 +1,6 @@
-
 *.fa
 .Rproj.user
 *.rar
 *fastq.gz
+.Rhistory
+.RData
