@@ -518,7 +518,7 @@ for (i in 1:length(genes)){
 
 ```
 
-# Plotting Figures
+# Figures
 
 ## Figure 1 - Bias in mock communities
 
@@ -717,12 +717,8 @@ positions = c('Pool-01-100', 'Pool-02-100', 'Pool-03-100', 'Pool-04-100', 'Pool-
 
 labels = c('100 Pool 1', '100 Pool 2', '100 Pool 3', '100 Pool 4', '100 Pool 5', '250 Pool 1', '250 Pool 2', '250 Pool 3', '250 Pool 4', '250 Pool 5', '500 Pool 1', '500 Pool 2', '500 Pool 3', '500 Pool 4', '500 Pool 5', '1000 Pool 1', '1000 Pool 2', '1000 Pool 3', '1000 Pool 4', '1000 Pool 5', 'Trap 1', 'Trap 2', 'Trap 3', 'Trap 4', 'Trap 5', 'Trap 6', 'Trap 7', 'Trap 8', 'Trap 9', 'Trap 10')
 
-#Drop Kingdom column so we have 3 loci merged, and agglomerate to species
-psglom <- ps_filtered
-tax_table(psglom) <- tax_table(psglom)[,2:7]
-psglom = tax_glom(psglom, "Species", NArm = TRUE)
-psglom <- transform_sample_counts(psglom, fun= proportions) # Reset scale to 1 following NArm
-psglom = filter_taxa(psglom, function(x) mean(x) > 0, TRUE)
+
+##Need to rename
 
 mdt <- fast_melt(ps_filtered) %>%
   filter(!is.na(Species)) %>%
@@ -732,7 +728,7 @@ mdt <- fast_melt(ps_filtered) %>%
            pull(V1) %>%
            str_replace(pattern="Pool","Mock Community")%>%
            str_replace(pattern="Trap","Trap Community"))  %>%
-  filter(!str_detect(SampleID,pattern="Pool-U"))
+  filter(!str_detect(SampleID,pattern="Pool-C"))
 
 #Summarise occurance
 occurance <- mdt %>%
@@ -763,7 +759,7 @@ mdt <- mdt %>%
 
 Fig2a <- ggplot(mdt, aes(x=SampleID,y=Species)) +
                        geom_tile(aes(fill=RelativeAbundance)) + 
-  scale_x_discrete(limits = positions,labels=labels,expand = c(0, 0)) +
+  #scale_x_discrete(limits = positions,labels=labels,expand = c(0, 0)) +
   theme_bw() + 
   scale_y_discrete(expand = c(0, 0)) +
   theme(axis.text.x = element_text(angle=60, hjust=1),
@@ -776,15 +772,24 @@ Fig2a <- ggplot(mdt, aes(x=SampleID,y=Species)) +
         panel.spacing = unit(0.2, "lines"),
         legend.position = "bottom",
         legend.direction = "horizontal") + 
-  facet_grid(Order~.,drop=TRUE, space="free",scales="free") + 
+  facet_grid(Order~.,drop=TRUE, space="free",scales="free")+
     scale_fill_distiller(palette="Blues", direction= 1, trans = 'log10', na.value = "white") #na.value="white"
 
 
 #Make text labels
 
-ann_text <- data.frame(SampleID = 'Pool-01-100', Species = 1,lab = "Text",
-                       cyl = factor(8,levels = c("4","6","8")))
-p + geom_text(data = ann_text,label = "Text")
+ann_text <- data.frame(SampleID = 'Pool-01-100', Species = 1 ,lab = mdt$Order,
+                       Order = mdt$Order) %>%
+             unique()
+
+for (i in 1:length(ann_text$Order)){
+  ann_text$Species[i] <- nrow(mdt %>%
+                                select(Species,Order) %>%
+                                unique() %>%
+                                  filter(Order ==  ann_text$Order[i] ))
+}
+
+Fig2a <- Fig2a + geom_text(data = ann_text,aes(size=Species),label = ann_text$lab,colour="#7F7F7F",hjust=0,nudge_x=-0.5,show.legend = FALSE) + scale_size(range=c(4,10))
 
   
 Fig2b <- ggplot(mdt, aes(loci, Species)) + 
@@ -809,6 +814,14 @@ Fig2b <- ggplot(mdt, aes(loci, Species)) +
   #scale_y_discrete(expand=c(0,0)) +
   facet_grid(Order~., space="free",scales="free" )
 
+#Create multi Heatmap figure
+Fig2 <- Fig2b + Fig2a + plot_layout(ncol = 2, widths=c(2,4)) #& theme(legend.position = "none")
+
+plot(Fig2)
+```
+
+```{R Venn diagrams}
+
 #Venn diagram of primer-taxa overlap at species level
 library(limma)
 library(ggforce)
@@ -817,7 +830,7 @@ df.venn <- data.frame(x = c(0, 0.866, -0.866),
                       y = c(1, -0.5, -0.5),
                       labels = c('18S', 'COI', '12S'))
 #Get overlapping features
-features <- reorder %>%
+features <- mdt %>%
   select(loci,Species) %>%
   group_by(loci)%>%
   unique()
@@ -853,7 +866,7 @@ gg.sppven <- ggplot(df.venn) +
 
 #Venn diagram of primer-taxa  overlap at Genus level
 #Get overlapping features
-features <- reorder %>%
+features <- mdt %>%
   select(loci,Genus) %>%
   group_by(loci)%>%
   unique()
@@ -886,18 +899,10 @@ gg.genven <- ggplot(df.venn) +
                 labs(title= "Genera") +
                 annotate("text", x = df.vdc$x, y = df.vdc$y, label = df.vdc$Counts, size = 5)
 
-
 #Create multi venn figure
 FigVenn <- gg.sppven + gg.genven
-
-
-#Create multi Heatmap figure
-Fig2 <- Fig2b + Fig2a + plot_layout(ncol = 2, widths=c(2,4)) #& theme(legend.position = "none")
-
-plot(Fig2)
 plot(FigVenn)
 ```
-
 
 ## Figure 2: Detection Heatmap
 
@@ -1251,4 +1256,33 @@ FigS2 <- plvi5 + plvi7 + gg.i5dist  + gg.i7dist
 # table(switched$count[which(stringdist(SampleSheet$index2[1],switched$i5,method="hamming")<1)])
 
 plot(FigS2)
+```
+
+
+
+## Supplementary 3: ASV Assignment to each rank
+
+```{r asv assignment}
+assign_ranks <- psmelt(ps_filtered)  %>% 
+  select(c("OTU","loci","Phylum","Class","Order","Family","Genus","Species")) %>%
+  distinct() %>%
+  mutate(Species = Species %>%
+          replace(str_detect(Species,pattern="spp."),values=NA)) %>%
+  gather(key="Rank", value="Taxon", -OTU,-loci) %>%  
+  drop_na() %>%
+  mutate(method = case_when(!Rank =="Species" ~"RDP",
+                  Rank =="Species" ~"Exact Match")) %>%
+  mutate(Rank = fct_relevel(Rank,c("Phylum","Class","Order","Family","Genus","Species")))%>%
+  mutate(method = fct_relevel(method,c("RDP","Exact Match")))
+
+gg.ranks <- ggplot(data=assign_ranks, aes(x=Rank, fill=loci)) + 
+        geom_bar(position="dodge",color="black",stat="count") +
+  facet_grid(.~method, space="free",scales="free", drop=TRUE)+
+  theme_bw()+ 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0)) +
+  #scale_x_discrete(limits=c("Phylum","Class","Order","Family","Genus","Species")) +
+  ylab("Number of ASVs")+
+  xlab("Taxonomic rank")+
+  scale_fill_manual(values =c("#FC4E07", "#E7B800", "#00AFBB")) 
+
 ```
