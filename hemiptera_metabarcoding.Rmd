@@ -298,10 +298,6 @@ tax_plus[,7] <- tax_plus[,7] %>%
   str_replace_all("rufiabdominale/rufiabdominalis","rufiabdominale") %>%
   str_replace_all("insertum/oxyacanthae","insertum")
 
-#Others to check:
-#Lonchoptera bifurcata/uniseta
-#Lipaphis erysimi/pseudobrassicae
-
 #Load sample information
 ## ---- samdat ----
 samdf <- read.csv("sample_data/Sample_info.csv", header=TRUE)
@@ -710,15 +706,12 @@ Fig1 <- Fig1a + Fig1b + Fig1c + Fig1d + Fig1e + plot_layout(ncol = 5)
 plot(Fig1)
 ```
 
-## Figure 2 modified
+## Figure 2 - Detection heatmap
 
 ```{r figure 2, eval=TRUE}
 positions = c('Pool-01-100', 'Pool-02-100', 'Pool-03-100', 'Pool-04-100', 'Pool-05-100', 'Pool-U1-250', 'Pool-U2-250', 'Pool-U3-250', 'Pool-U4-250', 'Pool-U5-250', 'Pool-06-500', 'Pool-07-500', 'Pool-08-500', 'Pool-09-500', 'Pool-10-500', 'Pool-11-1000', 'Pool-12-1000', 'Pool-13-1000', 'Pool-14-1000', 'Pool-15-1000', 'Trap-01', 'Trap-02', 'Trap-03', 'Trap-04', 'Trap-05', 'Trap-06', 'Trap-07', 'Trap-08', 'Trap-09', 'Trap-10')
 
 labels = c('100 Pool 1', '100 Pool 2', '100 Pool 3', '100 Pool 4', '100 Pool 5', '250 Pool 1', '250 Pool 2', '250 Pool 3', '250 Pool 4', '250 Pool 5', '500 Pool 1', '500 Pool 2', '500 Pool 3', '500 Pool 4', '500 Pool 5', '1000 Pool 1', '1000 Pool 2', '1000 Pool 3', '1000 Pool 4', '1000 Pool 5', 'Trap 1', 'Trap 2', 'Trap 3', 'Trap 4', 'Trap 5', 'Trap 6', 'Trap 7', 'Trap 8', 'Trap 9', 'Trap 10')
-
-
-##Need to rename
 
 mdt <- fast_melt(ps_filtered) %>%
   filter(!is.na(Species)) %>%
@@ -743,7 +736,7 @@ haplo <- mdt %>%
 haplo$haplo[haplo$haplo > 0] <- 1
 
 haplo <- haplo %>%
-    select(-SampleID,-RelativeAbundance,-count) %>%
+    select(-SampleID,-RelativeAbundance,-count,-type) %>%
     unique()  %>%
     group_by(Species,loci)   %>%
     summarise(n= n())
@@ -759,7 +752,7 @@ mdt <- mdt %>%
 
 Fig2a <- ggplot(mdt, aes(x=SampleID,y=Species)) +
                        geom_tile(aes(fill=RelativeAbundance)) + 
-  #scale_x_discrete(limits = positions,labels=labels,expand = c(0, 0)) +
+  scale_x_discrete(limits = positions,labels=labels,expand = c(0, 0)) +
   theme_bw() + 
   scale_y_discrete(expand = c(0, 0)) +
   theme(axis.text.x = element_text(angle=60, hjust=1),
@@ -794,7 +787,7 @@ Fig2a <- Fig2a + geom_text(data = ann_text,aes(size=Species),label = ann_text$la
   
 Fig2b <- ggplot(mdt, aes(loci, Species)) + 
   geom_point(aes(fill = loci,size=haplotypes), shape = 21, color = "black") + 
-  geom_text(data=reorder[which(reorder$haplotypes>1),],aes(label=haplotypes))+
+  geom_text(data=mdt[which(mdt$haplotypes>1),],aes(label=haplotypes))+
   scale_fill_manual(values=c("#FC4E07", "#E7B800", "#00AFBB")) +  
   theme_bw() +
   theme(axis.text.x = element_text(angle=60, hjust=1),
@@ -820,8 +813,95 @@ Fig2 <- Fig2b + Fig2a + plot_layout(ncol = 2, widths=c(2,4)) #& theme(legend.pos
 plot(Fig2)
 ```
 
-```{R Venn diagrams}
 
+## Figure 3 - ASV assignment to each rank
+
+### Barplots
+```{r asv assignment}
+
+#Get unique ASV's
+assign_ranks <- psmelt(ps_filtered)  %>% 
+  filter(Abundance > 0) %>%
+  select(c("OTU","loci","Phylum","Class","Order","Family","Genus","Species","biome")) %>%
+  distinct() %>%
+  mutate(Species = Species %>%
+          replace(str_detect(Species,pattern="spp."),values=NA)) %>%
+  gather(key="Rank", value="Taxon", -OTU,-loci, -biome) %>%  
+  drop_na() %>%
+  mutate(method = case_when(!Rank =="Species" ~"RDP",
+                  Rank =="Species" ~"Exact Match")) %>%
+  mutate(Rank = fct_relevel(Rank,c("Phylum","Class","Order","Family","Genus","Species")))%>%
+  mutate(method = fct_relevel(method,c("RDP","Exact Match")))
+
+#Plot barchart of ranks
+gg.ranks <- ggplot(data=assign_ranks, aes(x=Rank, fill=loci, group=loci)) + 
+  geom_bar(position="dodge",color="black",stat="count",alpha=0.8) +
+  geom_text(stat='count', aes(label=..count..),position = position_dodge(width = 1), vjust=-1) +
+  facet_grid(biome~method, space="free",scales="free_x", drop=TRUE)+
+  theme_bw() + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0)) +
+  #scale_x_discrete(limits=c("Phylum","Class","Order","Family","Genus","Species")) +
+  ylab("Number of ASVs")+
+  xlab("Taxonomic rank")+
+  scale_fill_manual(values =c("#FC4E07", "#E7B800", "#00AFBB")) 
+
+#Get taxonomic composition of reference database
+seq <- read.fasta("reference/merged_arthropoda_rdp_genus.fa")
+
+all_ref <- names(seq) %>%
+  str_split_fixed(pattern=";",n=6) %>%
+  as_tibble() %>%
+  pull(V1) %>%
+  table() %>%
+  as_tibble()
+
+hemiptera_ref <- names(seq) %>%
+  str_split_fixed(pattern=";",n=6) %>%
+  as_tibble() %>%
+  filter(V4== "Hemiptera")%>%
+  pull(V1) %>%
+  table() %>%
+  as_tibble()
+
+#Plotting 
+
+blank_theme <- theme_minimal()+
+  theme(
+  axis.title.x = element_blank(),
+  axis.title.y = element_blank(),
+  panel.border = element_blank(),
+  panel.grid=element_blank(),
+  axis.ticks = element_blank(),
+  plot.title=element_text(size=14, face="bold",hjust=0.5,vjust=1)
+  )
+
+gg.ref <- ggplot(data=ref,aes(x="",y=n,fill=.))+
+  geom_bar(width = 1,stat="identity",alpha=0.8) +
+  geom_text_repel(aes(y=n,label=paste0(.," : ",n)),nudge_x = 0.7,nudge_y=0.2) +
+  coord_polar("y",start=0) +
+  blank_theme +
+  scale_fill_manual(values =c("#FC4E07", "#E7B800", "#00AFBB")) +
+  theme(axis.text = element_blank(),
+        legend.position = "none") +
+  ggtitle(label="Insecta")
+
+gg.hemiptera <- ggplot(data=hemiptera_ref,aes(x="",y=n,fill=.))+
+  geom_bar(width = 1,stat="identity",alpha=0.8) +
+  geom_text_repel(aes(y=n,label=paste0(.," : ",n)),nudge_x = 0.7,nudge_y=0.2) +
+  coord_polar("y",start=0) +
+  blank_theme +
+  scale_fill_manual(values =c("#FC4E07", "#E7B800", "#00AFBB")) +
+  theme(axis.text = element_blank(),
+        legend.position = "none")+
+  ggtitle(label="Hemiptera")
+
+FigS3 <- (gg.ref / gg.hemiptera) | gg.ranks
+
+```
+
+### Venn diagrams
+
+```{R Venn diagrams}
 #Venn diagram of primer-taxa overlap at species level
 library(limma)
 library(ggforce)
@@ -829,268 +909,105 @@ library(ggforce)
 df.venn <- data.frame(x = c(0, 0.866, -0.866),
                       y = c(1, -0.5, -0.5),
                       labels = c('18S', 'COI', '12S'))
+
+#Loop through levels
+
+vec <- c("Phylum", "Class", "Order", "Family", "Genus", "Species")
+
+venn_list <- vector(mode="list", length=length(vec))
+
+for (i in 1:length(venn_list)){
 #Get overlapping features
-features <- mdt %>%
-  select(loci,Species) %>%
-  group_by(loci)%>%
-  unique()
 
-spp <- as.character(unique(features$Species))
-spp <- spp[which(!str_detect(spp,"spp."))]
-matching <- paste0(features$loci,"_",features$Species)
+  level = vec[i]
+  
+  features <- mdt %>%
+    select(loci,level) %>%
+    group_by(loci)%>%
+    unique() %>%
+    set_names(c("loci","level"))
+  
+  spp <- as.character(unique(features$level))
+  spp <- spp[which(!str_detect(spp,"spp."))]
+  matching <- paste0(features$loci,"_",features$level)
+  
+  overlap <- matrix(ncol=length(unique(features$loci)), nrow=length(spp))
+  
+  for (l in 1:length(spp)){
+    overlap[l,1] <- paste0("12S-Eukaryota","_",spp[l]) %in% matching
+    overlap[l,2] <- paste0("COI-Eukaryota","_",spp[l]) %in% matching
+    overlap[l,3] <- paste0("18s-Eukaryota","_",spp[l]) %in% matching
+  }
+  
+  vdc <- vennCounts(overlap)
+  class(vdc) <- 'matrix'
+  df.vdc <- as.data.frame(vdc)[-1,] %>%
+    mutate(x = c(0, 1.2, 0.8, -1.2, -0.8, 0, 0),
+           y = c(1.2, -0.6, 0.5, -0.6, 0.5, -1, 0))
+  
+  
+  venn_list[[i]] <- ggplot(df.venn) +
+                  geom_circle(aes(x0 = x, y0 = y, r = 1.5, fill = labels), alpha = .4, size = 1, colour = 'black') +
+                  coord_fixed() +
+                  theme_void() +
+                  theme(legend.position = 'none',
+                        plot.title = element_text(hjust = 0.5)) +
+                  scale_fill_manual(values =c("#FC4E07", "#E7B800", "#00AFBB")) +
+                  labs(title= vec[i]) +
+                  annotate("text", x = df.vdc$x, y = df.vdc$y, label = df.vdc$Counts, size = 5)
 
-overlap <- matrix(ncol=length(unique(features$loci)), nrow=length(spp))
-
-for (i in 1:length(spp)){
-  overlap[i,1] <- paste0("12S-Eukaryota","_",spp[i]) %in% matching
-  overlap[i,2] <- paste0("COI-Eukaryota","_",spp[i]) %in% matching
-  overlap[i,3] <- paste0("18s-Eukaryota","_",spp[i]) %in% matching
 }
 
-vdc <- vennCounts(overlap)
-class(vdc) <- 'matrix'
-df.vdc <- as.data.frame(vdc)[-1,] %>%
-  mutate(x = c(0, 1.2, 0.8, -1.2, -0.8, 0, 0),
-         y = c(1.2, -0.6, 0.5, -0.6, 0.5, -1, 0))
-
-
-gg.sppven <- ggplot(df.venn) +
-                geom_circle(aes(x0 = x, y0 = y, r = 1.5, fill = labels), alpha = .4, size = 1, colour = 'black') +
-                coord_fixed() +
-                theme_void() +
-                theme(legend.position = 'bottom',
-                      plot.title = element_text(hjust = 0.5)) +
-                scale_fill_manual(values =c("#FC4E07", "#E7B800", "#00AFBB")) +
-                labs(title= "Species") +
-                annotate("text", x = df.vdc$x, y = df.vdc$y, label = df.vdc$Counts, size = 5)
-
-#Venn diagram of primer-taxa  overlap at Genus level
-#Get overlapping features
-features <- mdt %>%
-  select(loci,Genus) %>%
-  group_by(loci)%>%
-  unique()
-gen <- as.character(unique(features$Genus))
-matching <- paste0(features$loci,"_",features$Genus)
-
-overlap <- matrix(ncol=length(unique(features$loci)), nrow=length(gen))
-
-for (i in 1:length(gen)){
-  overlap[i,1] <- paste0("12S-Eukaryota","_",gen[i]) %in% matching
-  overlap[i,2] <- paste0("COI-Eukaryota","_",gen[i]) %in% matching
-  overlap[i,3] <- paste0("18s-Eukaryota","_",gen[i]) %in% matching
-}
-
-vdc <- vennCounts(overlap)
-class(vdc) <- 'matrix'
-df.vdc <- as.data.frame(vdc)[-1,] %>%
-  mutate(x = c(0, 1.2, 0.8, -1.2, -0.8, 0, 0),
-         y = c(1.2, -0.6, 0.5, -0.6, 0.5, -1, 0))
-
-
-gg.genven <- ggplot(df.venn) +
-                geom_circle(aes(x0 = x, y0 = y, r = 1.5, fill = labels), alpha = .4, size = 1, colour = 'black') +
-                coord_fixed() +
-                theme_void() +
-                theme(legend.position = 'bottom',
-                      plot.title = element_text(hjust = 0.5)) +
-                scale_fill_manual(values =c("#FC4E07", "#E7B800", "#00AFBB")) +
-                #scale_colour_manual(values=c("#FC4E07", "#E7B800", "#00AFBB"), guide = FALSE) +
-                labs(title= "Genera") +
-                annotate("text", x = df.vdc$x, y = df.vdc$y, label = df.vdc$Counts, size = 5)
-
-#Create multi venn figure
-FigVenn <- gg.sppven + gg.genven
+FigVenn <- venn_list[[1]] + venn_list[[2]] + venn_list[[3]] + venn_list[[4]] + venn_list[[5]] + venn_list[[6]] + patchwork::plot_layout(nrow=1)
 plot(FigVenn)
 ```
 
-## Figure 2: Detection Heatmap
-
-```{r figure 2, eval=TRUE}
-positions = c('Pool-01-100', 'Pool-02-100', 'Pool-03-100', 'Pool-04-100', 'Pool-05-100', 'Pool-U1-250', 'Pool-U2-250', 'Pool-U3-250', 'Pool-U4-250', 'Pool-U5-250', 'Pool-06-500', 'Pool-07-500', 'Pool-08-500', 'Pool-09-500', 'Pool-10-500', 'Pool-11-1000', 'Pool-12-1000', 'Pool-13-1000', 'Pool-14-1000', 'Pool-15-1000', 'Trap-01', 'Trap-02', 'Trap-03', 'Trap-04', 'Trap-05', 'Trap-06', 'Trap-07', 'Trap-08', 'Trap-09', 'Trap-10')
-
-labels = c('100 Pool 1', '100 Pool 2', '100 Pool 3', '100 Pool 4', '100 Pool 5', '250 Pool 1', '250 Pool 2', '250 Pool 3', '250 Pool 4', '250 Pool 5', '500 Pool 1', '500 Pool 2', '500 Pool 3', '500 Pool 4', '500 Pool 5', '1000 Pool 1', '1000 Pool 2', '1000 Pool 3', '1000 Pool 4', '1000 Pool 5', 'Trap 1', 'Trap 2', 'Trap 3', 'Trap 4', 'Trap 5', 'Trap 6', 'Trap 7', 'Trap 8', 'Trap 9', 'Trap 10')
-
-#Drop Kingdom column so we have 3 loci merged, and agglomerate to species
-psglom <- ps_filtered
-tax_table(psglom) <- tax_table(psglom)[,2:7]
-psglom = tax_glom(psglom, "Species", NArm = TRUE)
-psglom <- transform_sample_counts(psglom, fun= proportions) # Reset scale to 1 following NArm
-psglom = filter_taxa(psglom, function(x) mean(x) > 0, TRUE)
-
-#Change order labels to simplify plot
-#tax_rename <- data.frame(tax_table(psglom)) 
-
-#tax_rename$Order <- tax_rename$Order %>%
-#  str_replace_all("Araneae","Other") %>%
-#  str_replace_all("Orthoptera","Other") %>%
-#  str_replace_all("Psocoptera","Other") %>%
-#str_replace_all("Thysanoptera","Other")
-
-#tax_table(psglom) <- as.matrix(tax_rename)
+### Reference database summary
 
 
-#Plot heatmap
-Fig2a <- plot_heatmap(psglom, "NMDS", "bray", taxa.label="Species", taxa.order="Family", na.value="transparent")   + #na.value="white"
-  scale_x_discrete(limits = positions,labels=labels,expand = c(0, 0)) +
-  theme_bw() + 
-  scale_y_discrete(expand = c(0, 0)) +
-  theme(axis.text.x = element_text(angle=60, hjust=1),
-        axis.title.x=element_blank(),
-        axis.title.y=element_blank(),
-        axis.text.y=element_blank(),
-        #panel.grid.major = element_line(colour = "white"),
-        panel.spacing =unit(0.2, "lines"),
-        legend.position = "bottom",
-        legend.direction = "horizontal") + facet_grid(Order~., space="free",scales="free" ) + 
-    scale_fill_distiller(palette="Blues", direction= 1, trans = 'log10', na.value = "transparent") #na.value="white"
+```{r}
+ref <- read.FASTA("reference/merged_arthropoda_rdp_genus.fa")
+ref_spp <- read.FASTA("reference/merged_arthropoda_rdp_species.fa")
 
-#Summarise the loci each taxa was detected with
-mdt = fast_melt(ps_filtered)
+names <- names(ref) %>%
+  str_split_fixed(";", n=6) %>%
+  as_tibble() %>%
+  set_colnames(c("loci", "Phylum", "Class", "Order", "Family", "Genus")) %>%
+  mutate(Species = names(ref_spp) %>% # Add species column
+           str_split_fixed(pattern=" ", n=3) %>%
+           as_tibble() %>%
+           unite("Species", c("V2", "V3"), sep="_") %>%
+           pull(Species)) %>%
+  mutate(loci = str_replace(loci, pattern="-Eukaryota", replacement=""))  %>%
+  unique() %>% #get unique species
+  mutate(Order = case_when(
+    Class =="Insecta" ~ Order,
+    !Class =="Insecta" ~ Class
+  ))  %>%  group_by(loci, Phylum, Class, Order) %>%
+  summarise(Value = n()) %>%
+  mutate(pathString = paste("Euk", Phylum, Class, Order, sep="/"))
 
-#  mdt$Order <- mdt$Order  %>%
-#  str_replace_all("Araneae","Other") %>%
-#  str_replace_all("Orthoptera","Other") %>%
-#  str_replace_all("Psocoptera","Other") %>%
-#  str_replace_all("Thysanoptera","Other")
+#Write newick file
+library(data.tree)
+write(ToNewick(as.Node(names)), file="tree.nwk")
 
-  summarydt = mdt[, list(totalRA = sum(RelativeAbundance)),
-                  by = c("loci","Order","Family", "Genus","Species", "SampleID", "taxaID")]
-  summarydt <- summarydt[!is.na(summarydt$Species)]
-  summarydt$totalRA[summarydt$totalRA > 0] <- 1
-  
-#Summarise haplotypes  
-  haplo <- summarydt %>%  
-    select(-SampleID) %>%
-    unique()  %>%
-    group_by(Species,loci)   %>%
-    summarise(n= n())
-  colnames(haplo) <- c("Species","loci","haplotypes")
-  
-  summarydt <- left_join(summarydt,haplo) 
-  
-#Order data as per heatmap
-  rankcol = which(rank_names(psglom) %in% "Family")
-  taxmat = as(tax_table(psglom)[, 1:rankcol], "matrix")
-  taxa.order = apply(taxmat, 1, paste, sep = "", collapse = "")
-  names(taxa.order) <- taxa_names(psglom)
-  taxa.order = as.tibble(names(sort(taxa.order, na.last = TRUE)))
-  colnames(taxa.order) <- "taxaID"
-  taxa.order$seq <- seq(1:nrow(taxa.order))
-  reorder <- full_join(taxa.order,summarydt,by="taxaID") 
-
-  reorder$Species <- factor(reorder$Species, levels = unique(reorder$Species[order(reorder$seq)]))
-
-  
-Fig2b <- ggplot(reorder, aes(loci, Species)) + 
-  geom_point(aes(fill = loci,size=haplotypes), shape = 21, color = "black") + 
-  geom_text(data=reorder[which(reorder$haplotypes>1),],aes(label=haplotypes))+
-  scale_fill_manual(values=c("#FC4E07", "#E7B800", "#00AFBB")) +  
-  theme_bw() +
-  theme(axis.text.x = element_text(angle=60, hjust=1),
-        axis.title.x= element_blank(),
-        axis.ticks.y = element_blank(),
-        legend.position = "bottom",
-        legend.direction = "vertical",
-        axis.title.y=element_blank(),
-        strip.background = element_blank(),
-        strip.text = element_blank(),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        panel.border = element_blank(),
-        panel.spacing =unit(0.2, "lines"),
-        aspect.ratio = .5) +
-  scale_size_continuous(range = c(3, 6)) +
-  #scale_y_discrete(expand=c(0,0)) +
-  facet_grid(Order~., space="free",scales="free" )
-
-#Venn diagram of primer-taxa overlap at species level
-library(limma)
-library(ggforce)
-
-df.venn <- data.frame(x = c(0, 0.866, -0.866),
-                      y = c(1, -0.5, -0.5),
-                      labels = c('18S', 'COI', '12S'))
-#Get overlapping features
-features <- reorder %>%
-  select(loci,Species) %>%
-  group_by(loci)%>%
-  unique()
-
-spp <- as.character(unique(features$Species))
-spp <- spp[which(!str_detect(spp,"spp."))]
-matching <- paste0(features$loci,"_",features$Species)
-
-overlap <- matrix(ncol=length(unique(features$loci)), nrow=length(spp))
-
-for (i in 1:length(spp)){
-  overlap[i,1] <- paste0("12S-Eukaryota","_",spp[i]) %in% matching
-  overlap[i,2] <- paste0("COI-Eukaryota","_",spp[i]) %in% matching
-  overlap[i,3] <- paste0("18s-Eukaryota","_",spp[i]) %in% matching
-}
-
-vdc <- vennCounts(overlap)
-class(vdc) <- 'matrix'
-df.vdc <- as.data.frame(vdc)[-1,] %>%
-  mutate(x = c(0, 1.2, 0.8, -1.2, -0.8, 0, 0),
-         y = c(1.2, -0.6, 0.5, -0.6, 0.5, -1, 0))
+#Read in newick as phylogeny
+library(ggtree)
+tree <- read.tree("tree.nwk")
 
 
-gg.sppven <- ggplot(df.venn) +
-                geom_circle(aes(x0 = x, y0 = y, r = 1.5, fill = labels), alpha = .4, size = 1, colour = 'black') +
-                coord_fixed() +
-                theme_void() +
-                theme(legend.position = 'bottom',
-                      plot.title = element_text(hjust = 0.5)) +
-                scale_fill_manual(values =c("#FC4E07", "#E7B800", "#00AFBB")) +
-                labs(title= "Species") +
-                annotate("text", x = df.vdc$x, y = df.vdc$y, label = df.vdc$Counts, size = 5)
+#Plot tree
+p <- ggtree(tree, branch.length = "none") + geom_tiplab() + geom_nodelab(geom='label') + 
+    scale_x_continuous(expand=c(0, 2))
 
-#Venn diagram of primer-taxa  overlap at Genus level
-#Get overlapping features
-features <- reorder %>%
-  select(loci,Genus) %>%
-  group_by(loci)%>%
-  unique()
-gen <- as.character(unique(features$Genus))
-matching <- paste0(features$loci,"_",features$Genus)
+bar <- names %>% 
+  ungroup() %>%
+  rename(id = Order) %>% 
+  select(id, loci, Value)
+p2 <- facet_plot(p, 'Unique Species', data = bar, geom=ggstance::geom_barh, mapping=aes(x=Value, fill=loci), stat="identity")+
+    theme_tree2(legend.position=c(.05, .85))  +
+                  scale_fill_manual(values =c("#FC4E07", "#E7B800", "#00AFBB"))
 
-overlap <- matrix(ncol=length(unique(features$loci)), nrow=length(gen))
-
-for (i in 1:length(gen)){
-  overlap[i,1] <- paste0("12S-Eukaryota","_",gen[i]) %in% matching
-  overlap[i,2] <- paste0("COI-Eukaryota","_",gen[i]) %in% matching
-  overlap[i,3] <- paste0("18s-Eukaryota","_",gen[i]) %in% matching
-}
-
-vdc <- vennCounts(overlap)
-class(vdc) <- 'matrix'
-df.vdc <- as.data.frame(vdc)[-1,] %>%
-  mutate(x = c(0, 1.2, 0.8, -1.2, -0.8, 0, 0),
-         y = c(1.2, -0.6, 0.5, -0.6, 0.5, -1, 0))
-
-
-gg.genven <- ggplot(df.venn) +
-                geom_circle(aes(x0 = x, y0 = y, r = 1.5, fill = labels), alpha = .4, size = 1, colour = 'black') +
-                coord_fixed() +
-                theme_void() +
-                theme(legend.position = 'bottom',
-                      plot.title = element_text(hjust = 0.5)) +
-                scale_fill_manual(values =c("#FC4E07", "#E7B800", "#00AFBB")) +
-                #scale_colour_manual(values=c("#FC4E07", "#E7B800", "#00AFBB"), guide = FALSE) +
-                labs(title= "Genera") +
-                annotate("text", x = df.vdc$x, y = df.vdc$y, label = df.vdc$Counts, size = 5)
-
-
-#Create multi venn figure
-FigVenn <- gg.sppven + gg.genven
-
-
-#Create multi Heatmap figure
-Fig2 <- Fig2b + Fig2a + plot_layout(ncol = 2, widths=c(2,4)) #& theme(legend.position = "none")
-
-plot(Fig2)
-plot(FigVenn)
 ```
 
 
@@ -1172,7 +1089,6 @@ plvi7 <- ggplot(data = lvi7, aes(x = row, y = col), stat="identity")  +
         axis.text = element_blank(),
         axis.ticks=element_blank()) +
   labs(title= "Edit distance between i7 Indices")  
-
 
 # Levenshtein i5
 
@@ -1259,30 +1175,39 @@ plot(FigS2)
 ```
 
 
+# Distance statistics for potential exotic detections
 
-## Supplementary 3: ASV Assignment to each rank
+```{r stats for detections}
+genus <- read.dna("reference/merged_arthropoda_rdp_genus.fa", format="fasta")
+spp <- read.dna("reference/merged_arthropoda_rdp_species.fa", format="fasta")
 
-```{r asv assignment}
-assign_ranks <- psmelt(ps_filtered)  %>% 
-  select(c("OTU","loci","Phylum","Class","Order","Family","Genus","Species")) %>%
-  distinct() %>%
-  mutate(Species = Species %>%
-          replace(str_detect(Species,pattern="spp."),values=NA)) %>%
-  gather(key="Rank", value="Taxon", -OTU,-loci) %>%  
-  drop_na() %>%
-  mutate(method = case_when(!Rank =="Species" ~"RDP",
-                  Rank =="Species" ~"Exact Match")) %>%
-  mutate(Rank = fct_relevel(Rank,c("Phylum","Class","Order","Family","Genus","Species")))%>%
-  mutate(method = fct_relevel(method,c("RDP","Exact Match")))
+#Aphis varians
 
-gg.ranks <- ggplot(data=assign_ranks, aes(x=Rank, fill=loci)) + 
-        geom_bar(position="dodge",color="black",stat="count") +
-  facet_grid(.~method, space="free",scales="free", drop=TRUE)+
-  theme_bw()+ 
-  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0)) +
-  #scale_x_discrete(limits=c("Phylum","Class","Order","Family","Genus","Species")) +
-  ylab("Number of ASVs")+
-  xlab("Taxonomic rank")+
-  scale_fill_manual(values =c("#FC4E07", "#E7B800", "#00AFBB")) 
+n_aphis <- names(genus) %>%
+  str_split_fixed(pattern=";",n=6) %>%
+  as_tibble() %>%
+  filter(V1=="COI-Eukaryota") %>%
+  filter(V6=="Aphis")
+print(paste0(nrow(aphis)," ",unique(aphis$V1)," sequences in database for ", unique(aphis$V6)))
 
+#Carpophilus sexpustulatus
+
+carp <- names(genus) %>%
+  str_split_fixed(pattern=";",n=6) %>%
+  as_tibble() %>%
+  filter(V1=="18s-Eukaryota") %>%
+  filter(V6=="Carpophilus") %>%
+  unite(col=all, c("V1","V2","V3","V4","V5","V6"),sep=";")
+print(paste0(nrow(carp)," ",unique(carp$V1)," sequences in database for ", unique(carp$V6)))
+
+carpseqs <- genus[which(names(genus) %in% carp$all)]
+
+carpspp <- spp[which(spp %in% carpseqs)]
+```
+
+
+# Session info
+
+```{r sessioninfo}
+sessionInfo()
 ```

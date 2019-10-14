@@ -476,3 +476,4 @@ db_12S <- read.fasta("reference/Arthropoda_12S.fa",strip.desc = FALSE, as.string
 write.fasta(c(genus_COI, genus_18S,genus_12S ), c(getName(genus_12S),getName(genus_12S),getName(genus_12S)), "reference/merged_arthropoda.fa", as.string=FALSE, nbchar=5000)
 
 ```
+
