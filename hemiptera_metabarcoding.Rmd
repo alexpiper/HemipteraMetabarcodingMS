@@ -4,7 +4,6 @@ subtitle: "Reproducible workflow"
 author: "J. Batovska, A.M. Piper, I. Valenzuela, J.P. Cunningham & M.J. Blacket"
 date: "2019/10/15"
 output:
-  pdf_document: default
   html_document:
     highlighter: null
     theme: "flatly"
@@ -14,6 +13,7 @@ output:
       collapsed: false
       smooth_scroll: true
     df_print: paged
+  pdf_document: default
 ---
 
 
@@ -101,7 +101,7 @@ out=$sample_nameF.temp.fastq.gz \
 out2=$sample_nameR.temp.fastq.gz \
 literal=ATTGGWGGWTTYGGAAAYTG,TATRAARTTRATWGCTCCTA,ATGCATGTCTCAGTGCAAG, \
 TCGACAGTTGATAAGGCAGAC,CAYCTTGACYTAACAT,TAAAYYAGGATTAGATACCC \
-===copyundefined k=14 ordered=t rcomp=f ktrim=l tbo tpe;
+copyundefined k=14 ordered=t rcomp=f ktrim=l tbo tpe;
 
 #Trim 5' primers from forward and reverse reads and any bases to the right
 ~/bbmap/bbduk.sh in=$sample_nameF.temp.fastq.gz \
@@ -584,7 +584,10 @@ for (i in 1:length(genes)){
   print(genes[i])
   ps_loci = subset_taxa(ps_filtered, loci %in% genes[i])
   tax_table(ps_loci)  <- tax_table(ps_loci)[,2:7]
-
+  
+  #Reset scale to zero following subset
+  ps_loci <- transform_sample_counts(ps_loci, fun = proportions)
+  
   #Summary export
   sp_summary <- summarize_taxa(ps_loci, "Species", "SampleID")
   sp_summary <- spread(sp_summary, key="SampleID", value="totalRA")
