@@ -1,8 +1,10 @@
 ---
-title: "Arthropod reference database builder"
-author: "Alexander Piper"
+title: "Supplementary to: Developing a non-destructive metabarcoding protocol for detection of pest insects in bulk trap catches"
+subtitle: "Arthropod reference database builder"
+author: "J. Batovska, A.M. Piper, I. Valenzuela, J.P. Cunningham & M.J. Blacket"
 date: "2019/10/15"
 output:
+  pdf_document: default
   html_document:
     highlighter: null
     theme: "flatly"
@@ -12,7 +14,6 @@ output:
       collapsed: false
       smooth_scroll: true
     df_print: paged    
-  pdf_document: default
 ---
 
 

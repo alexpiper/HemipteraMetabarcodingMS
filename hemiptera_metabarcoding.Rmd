@@ -1,8 +1,10 @@
 ---
-title: "Developing a non-destructive metabarcoding protocol for detection of target insects in bulk trap catches"
+title: "Supplementary to: Developing a non-destructive metabarcoding protocol for detection of pest insects in bulk trap catches"
+subtitle: "Reproducible workflow"
 author: "J. Batovska, A.M. Piper, I. Valenzuela, J.P. Cunningham & M.J. Blacket"
 date: "2019/10/15"
 output:
+  pdf_document: default
   html_document:
     highlighter: null
     theme: "flatly"
@@ -12,7 +14,6 @@ output:
       collapsed: false
       smooth_scroll: true
     df_print: paged
-  pdf_document: default
 ---
 
 
@@ -963,6 +964,9 @@ assign_ranks <- psmelt(ps_filtered)  %>%
 #Plot barchart of ranks
 gg.ranks <- ggplot(data=assign_ranks, aes(x=Rank, fill=loci, group=loci)) +
   geom_bar(position="dodge",stat="count",alpha=0.8) +
+  geom_text(stat='count', aes(label=..count..),
+            position = position_dodge(width = 1),
+            vjust=0.5, hjust=1.2, angle=90) +
   facet_grid(biome~method, space="free",scales="free_x", drop=TRUE)+
   theme_bw() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0)) +
