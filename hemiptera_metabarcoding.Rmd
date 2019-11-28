@@ -452,7 +452,7 @@ switching
 
 ```{r index switching, eval = FALSE}
 #Read in original sample sheet
-SampleSheet <- read_csv("SampleSheet_run4.csv",skip=20)
+SampleSheet <- read_csv("demultiplexing/SampleSheet_run4.csv",skip=20)
 
 ##enumerate 1 mismatch to all indices to mimic demultiplexing with a single mismatch
 
@@ -464,7 +464,7 @@ combos <- expand.grid(I7_Index_ID, I5_Index_ID)
 combos$indices <- paste0(combos$Var1,"+",combos$Var2)
 
 #Determined reads from mock communities
-determined <- read_table2("determined.txt",col_names = FALSE)
+determined <- read_table2("demultiplexing/determined.txt",col_names = FALSE)
 colnames(determined) <- c("Sample_Name","count")
 determined$Sample_Name <- determined$Sample_Name %>%
   str_replace_all("-","_") %>%
@@ -477,7 +477,7 @@ determined <- determined %>%
 head(determined)
 
 #Undetermined reads from mock communities
-undetermined <- read_table("undetermined.txt",col_names = FALSE)
+undetermined <- read_table("demultiplexing/undetermined.txt",col_names = FALSE)
 colnames(undetermined) <- c("count","indices")
 undetermined$Sample_Name <- "Undetermined_S0_R1_001.trimmed.fastq.gz"
 head(undetermined)
