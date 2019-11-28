@@ -90,3 +90,4 @@ proportions = function(x,thresh=0,...){
   xprop2 = (xprop / sum(xprop))
   return(xprop2)
 }
+

@@ -4,7 +4,6 @@ subtitle: "Arthropod reference database builder"
 author: "J. Batovska, A.M. Piper, I. Valenzuela, J.P. Cunningham & M.J. Blacket"
 date: "2019/11/28"
 output:
-  pdf_document: default
   html_document:
     highlighter: null
     theme: "flatly"
@@ -14,6 +13,7 @@ output:
       collapsed: false
       smooth_scroll: true
     df_print: paged    
+  pdf_document: default
 ---
 
 

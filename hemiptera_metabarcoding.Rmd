@@ -4,7 +4,6 @@ subtitle: "Reproducible workflow"
 author: "J. Batovska, A.M. Piper, I. Valenzuela, J.P. Cunningham & M.J. Blacket"
 date: "2019/11/28"
 output:
-  pdf_document: default
   html_document:
     highlighter: null
     theme: "flatly"
@@ -14,6 +13,7 @@ output:
       collapsed: false
       smooth_scroll: true
     df_print: paged
+  pdf_document: default
 editor_options: 
   chunk_output_type: console
 ---
@@ -518,6 +518,23 @@ genes <- psmelt(ps) %>%
   filter(!is.na(loci)) %>%
   pull(loci) %>%
   as.vector()
+
+# Output fasta file
+seqs <- DNAStringSet(colnames(get_taxa(ps)))
+names(seqs) <- unname(tax_table(ps)) %>%
+    as.data.frame() %>%
+  tidyr::unite(header, "V1", "V2", "V3", "V4", "V5", "V6", "V7", sep=";") %>%
+  mutate(header = str_replace_all(header, pattern="NA", replacement="")) %>%
+  pull(header) %>%
+  str_replace(pattern=";;.*$", replacement="") %>%
+  str_replace(pattern=";$", replacement="") %>%
+  str_replace(pattern="-Eukaryota", replacement="") %>%
+  str_replace(pattern=" ", replacement="_") %>%
+  str_replace(pattern="spp.", replacement="spp") %>%
+  make.unique()
+        
+writeXStringSet(seqs, filepath = "output/filtered_asv.fasta", width=1000)
+
 
 for (i in 1:length(genes)){
   print(genes[i])
