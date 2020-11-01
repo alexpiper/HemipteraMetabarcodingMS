@@ -106,7 +106,7 @@ sapply(c("dada2", "phyloseq","ips", "DECIPHER",
          "data.table", "tidyverse","Biostrings",
          "ShortRead","scales","stringdist","patchwork",
          "psadd","ggpubr","seqinr", "limma", "ggforce",
-         "viridis", "data.tree", "ggtree"),
+         "viridis", "data.tree", "ggtree", "insect"),
        require, character.only = TRUE)
 
 source('scripts/helper_functions.R')
@@ -568,14 +568,14 @@ This figure will summarise the taxonomic composition of the reference database, 
 ```{r Figure 2a ref summary}
 # R
 # Load reference files
-ref <- read.FASTA("reference/merged_arthropoda_rdp_genus.fa.gz")
-ref_spp <- read.FASTA("reference/merged_arthropoda_rdp_species.fa.gz")
+ref <- insect::readFASTA("reference/merged_arthropoda_rdp_genus.fa.gz")
+ref_spp <- insect::readFASTA("reference/merged_arthropoda_rdp_species.fa.gz")
 
 # Get lineage for tree 
 lineage <- names(ref) %>%
   str_split_fixed(";", n=6) %>%
   as_tibble() %>%
-  set_colnames(c("loci", "Phylum", "Class", "Order", "Family", "Genus")) %>%
+  magrittr::set_colnames(c("loci", "Phylum", "Class", "Order", "Family", "Genus")) %>%
   mutate(Species = names(ref_spp) %>% # Add species column
            str_split_fixed(pattern=" ", n=3) %>%
            as_tibble() %>%
@@ -763,19 +763,21 @@ Fig1a <- ggplot(df_exp, aes(x= SampleID, y=Abundance,fill= Genus)) +
   coord_flip()
 
 # Plot Fig1b - all 3 loci merged
-psmock <- ps_filtered
-
-# Drop Kingdom column to merge results for 3 loci
-tax_table(psmock) <- tax_table(psmock)[,2:7]
-
-# Subset to mock communities
-df_mock <- subset_samples(psmock, biome == "Laboratory") %>%
+df_mock <- subset_taxa(ps, Phylum == "Arthropoda") %>% 
+  subset_samples(biome == "Laboratory") %>%
   subset_samples(sample_names(psmock)!=rm_c1) %>%
   tax_glom("Species", NArm = TRUE) %>%
   filter_taxa(function(x) mean(x) > 0, TRUE) %>%
-  transform_sample_counts(fun= proportions)  %>%
-  psmelt()
-
+  psmelt() %>%
+  filter(Abundance > 0) %>%
+  group_by(SampleID, loci) %>%
+  mutate_at(vars(Abundance), ~ . / sum(.))  %>% #Convert to proportions within loci
+  ungroup() %>%
+  group_by(Abundance, Species, Genus, SampleID, pool_comp) %>%
+  summarise(Abundance = mean(Abundance))%>%
+  group_by(SampleID) %>%
+  mutate_at(vars(Abundance), ~ . / sum(.))
+  
 # Reorder to pool composition
 df_mock$SampleID <- factor(df_mock$SampleID, 
                            levels = unique(df_mock$SampleID[order(-df_mock$pool_comp)]))
@@ -798,10 +800,13 @@ Fig1b <- ggplot(df_mock, aes(x= SampleID, y=Abundance,fill= Genus)) +
 ps_coi <- subset_taxa(ps_filtered, loci == "COI-Eukaryota") %>%
   subset_samples(biome == "Laboratory") %>%
   tax_glom("Species", NArm = TRUE) %>%
-  transform_sample_counts(fun = proportions) %>%
-  filter_taxa(function(x) mean(x) > 0, TRUE) %>%
+  transform_sample_counts(fun = proportions) 
+
+ps_coi <- ps_coi %>%
   subset_samples(sample_names(ps_coi)!=rm_c1) %>%
-  subset_samples(sample_names(ps_coi)!=rm_c1_exp)
+  subset_samples(sample_names(ps_coi)!=rm_c1_exp)%>%
+  filter_taxa(function(x) mean(x) > 0, TRUE) 
+
 
 tax_table(ps_coi) <- tax_table(ps_coi)[,2:7]
 df_coi <- psmelt(ps_coi)
@@ -829,9 +834,12 @@ ps_18s <- subset_taxa(ps_filtered, loci == "18s-Eukaryota") %>%
   subset_samples(biome == "Laboratory") %>%
   tax_glom("Species", NArm = TRUE) %>%
   transform_sample_counts(fun = proportions) %>%
-  filter_taxa(function(x) mean(x) > 0, TRUE) %>%
+  filter_taxa(function(x) mean(x) > 0, TRUE) 
+
+ps_18s <- ps_18s %>%
   subset_samples(sample_names(ps_18s)!=rm_c1) %>%
-  subset_samples(sample_names(ps_18s)!=rm_c1_exp)
+  subset_samples(sample_names(ps_18s)!=rm_c1_exp)%>%
+  filter_taxa(function(x) mean(x) > 0, TRUE) 
 
 tax_table(ps_18s) <- tax_table(ps_18s)[,2:7]
 df_18s <- psmelt(ps_18s)
@@ -858,10 +866,12 @@ Fig1d <- ggplot(df_18s, aes(x= SampleID, y=Abundance,fill= Genus)) +
 ps_12s <- subset_taxa(ps_filtered, loci == "12S-Eukaryota") %>%
   subset_samples(biome == "Laboratory") %>%
   tax_glom("Species", NArm = TRUE) %>%
-  transform_sample_counts(fun = proportions) %>%
-  filter_taxa(function(x) mean(x) > 0, TRUE) %>%
+  transform_sample_counts(fun = proportions) 
+
+ps_12s <- ps_12s %>%
   subset_samples(sample_names(ps_12s)!=rm_c1) %>%
-  subset_samples(sample_names(ps_12s)!=rm_c1_exp)
+  subset_samples(sample_names(ps_12s)!=rm_c1_exp)%>%
+  filter_taxa(function(x) mean(x) > 0, TRUE)
 
 tax_table(ps_12s) <- tax_table(ps_12s)[,2:7]
 df_12s <- psmelt(ps_12s)
