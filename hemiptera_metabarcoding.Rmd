@@ -96,7 +96,7 @@ rm *.temp.*
 
 # Metabarcoding analysis with DADA2
 
-## Set up analysis
+## Load packages
 
 Load all required packages, and import helper functions from scripts folder
 
@@ -601,13 +601,37 @@ p <- ggtree(tree, branch.length = "none") + geom_tiplab() + geom_nodelab(geom='l
 bar <- lineage %>%
   ungroup() %>%
   rename(id = Order) %>%
-  select(id, loci, Value)
+  select(id, loci, Value) %>%
+  complete(loci, id, fill=list(Value=0))
 
-# Plot tree + metadata
-p2 <- facet_plot(p, 'Unique Species', data = bar, geom=ggstance::geom_barh,
-                 mapping=aes(x=Value, fill=loci), stat="identity") +
-                theme_bw() +
-                scale_fill_manual(values =c("#FC4E07", "#E7B800", "#00AFBB"))
+## Plot tree + metadata (Old Plot)
+#p2 <- facet_plot(p, 'Unique Species', data = bar, geom=ggstance::geom_barh,
+#                 mapping=aes(x=Value, fill=loci), stat="identity", position="dodge") +
+#                theme_bw() +
+#                scale_fill_manual(values =c("#FC4E07", "#E7B800", "#00AFBB"))
+
+# Make barplot separately
+p1 <- bar %>%
+  left_join(p$data %>%
+    dplyr::select(id = label, y)) %>%
+  mutate(id = as.factor(id)) %>%
+  mutate(id = fct_reorder(id, y)) %>%
+  ggplot(aes(x=id, y=Value, fill=loci)) +
+  geom_col(position="dodge", width=0.8)+
+  coord_flip() +
+  #scale_y_continuous(trans="log10", labels=scales::label_number_si())+
+  scale_y_continuous(trans=scales::pseudo_log_trans(10), breaks=c(0, 100, 1000, 10000, 40000), labels=scales::label_number_si(), expand=c(0,0))+
+  theme_bw() +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        legend.position = "none") +
+  scale_fill_manual(values =c("#FC4E07", "#E7B800", "#00AFBB")) +
+  labs(x = NULL, y=NULL)
+
+
+p2 <- p + p1
+
+p2
 ```
 
 ### ASV assignment to each rank
