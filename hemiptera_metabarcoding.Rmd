@@ -51,12 +51,13 @@ software BBDuk (Part of BBTools package https://jgi.doe.gov/data-and-tools/bbtoo
 
 
 ```{bash bbduk primer trimming}
+# Below script needs to be run within each data directory
 # BASH
-mkdir cleaned
-ls | grep "R1_001.fastq.gz" | sort > test_ls_F
-ls | grep "R2_001.fastq.gz" | sort > test_ls_R
+mkdir trimmed
+ls | grep "R1_001.fastq.gz" | sort > fastq_F
+ls | grep "R2_001.fastq.gz" | sort > fastq_R
 
-let files=$(grep -c "fastq.gz" test_ls_F)
+let files=$(grep -c "fastq.gz" fastq_F)
 
 declare -i x
 x=1
@@ -64,8 +65,8 @@ x=1
 while [ $x -le $files ]
 	do
 
-queryF=$(sed -n "${x}p" test_ls_F)
-queryR=$(sed -n "${x}p" test_ls_R)
+queryF=$(sed -n "${x}p" fastq_F)
+queryR=$(sed -n "${x}p" fastq_R)
 
 sample_nameF=$(echo $queryF | awk -F . '{ print $1}')
 sample_nameR=$(echo $queryR | awk -F . '{ print $1}')
@@ -82,8 +83,8 @@ copyundefined k=14 ordered=t rcomp=f ktrim=l tbo tpe;
 #Trim 5' primers from forward and reverse reads and any bases to the right
 ~/bbmap/bbduk.sh in=$sample_nameF.temp.fastq.gz \
 in2=$sample_nameR.temp.fastq.gz \
-out=./cleaned/$sample_nameF.trimmed.fastq.gz \
-out2=./cleaned/$sample_nameR.trimmed.fastq.gz \
+out=./trimmed/$sample_nameF.trimmed.fastq.gz \
+out2=./trimmed/$sample_nameR.trimmed.fastq.gz \
 literal=GGGTATCTAATCCTRRTTTA,ATGTTARGTCAAGRTG \
 copyundefined k=14 ordered=t rcomp=f ktrim=r tbo tpe;
 
@@ -122,7 +123,7 @@ reads for each run:
 runs <- dir("data/", pattern="run")
 
 for (i in seq(along=runs)){
-path <- paste0("data/",runs[i])
+path <- paste0("data/",runs[i], "trimmed")
 fastqFs <- sort(list.files(path, pattern="R1_001.trimmed.fastq.gz", full.names = TRUE))
 fastqRs <- sort(list.files(path, pattern="R2_001.trimmed.fastq.gz", full.names = TRUE))
   p1 <- plotQualityProfile(fastqFs[1:4]) + ggtitle(paste0(runs[i]," Forward Reads"))
@@ -142,7 +143,7 @@ runs <- dir("data/", pattern="run")
 filtered_out <- list()
 
 for (i in seq(along=runs)){
-  path <- paste0("data/",runs[i])
+  path <- paste0("data/",runs[i], "trimmed")
   filtpath <- file.path(path, "filtered")
 
   fastqFs <- sort(list.files(path, pattern="R1_001.trimmed.fastq.gz"))
