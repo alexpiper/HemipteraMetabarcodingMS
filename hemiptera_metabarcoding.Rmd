@@ -101,8 +101,10 @@ rm *.temp.*
 
 Load all required packages, and import helper functions from scripts folder
 
-```{r set up, eval = TRUE, message=FALSE, error=FALSE }
+```{r set up, eval = FALSE, message=FALSE, error=FALSE }
 # R
+devtools::install_github("shaunpwilkinson/insect", build_vignettes = TRUE) 
+
 sapply(c("dada2", "phyloseq","ips", "DECIPHER",
          "data.table", "tidyverse","Biostrings",
          "ShortRead","scales","stringdist","patchwork",
@@ -398,12 +400,13 @@ Fastq files contain the index information for each read in the read header, and 
     ATACTGTGCGTACTGCAGATCGGAAGAGCACACGTCTGAACTCCAGTCACGAGACGATATCTCGTATGCCGTCTT +
     BBBB?FFFBABAEGGGGGGGGGGGGGFHHHHHHGHHHGHHHHHHHHHHHHGGEEEEEAFGGHGHFAHHHHGGGH
 
+**NOTE: As the NCBI SRA strips fastq headers from uploads, this calculation is only reproducible using the fastq files contained in the data folder in the [zenodo repository](https://doi.org/10.5281/zenodo.5171623). The determined.txt and undetermined.txt files produced by this step are hosted in the manuscripts [github repository](https://github.com/alexpiper/HemipteraMetabarcodingMS), so this code chunk can be skipped.**
+
 
 ```{bash undetermined}
 # BASH
 # Summarise undetermined reads from R1 undetermined file
-zcat Undetermined_S0_L001_R1_001.fastq.gz | grep '^@M03633' \ 
-| cut -d : -f 10 | sort | uniq -c | sort -nr > undetermined.txt
+zcat Undetermined*_R1_001.fastq.gz | grep '^@M03633' | cut -d : -f 10 | sort | uniq -c | sort -nr > undetermined.txt
 
 # Summarise correctly determined reads from all other R1 files
 rm determined.txt
@@ -1302,8 +1305,3 @@ FigS2 <- plvi5 + plvi7 + gg.i5dist  + gg.i7dist
 plot(FigS2)
 ```
 
-# Session info
-
-```{r sessioninfo, eval=TRUE}
-sessionInfo()
-```
