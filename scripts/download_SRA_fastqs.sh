@@ -52,6 +52,17 @@ curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR140/067/SRR14022267/SRR14022267_2.
 curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR140/066/SRR14022266/SRR14022266_1.fastq.gz -o data/run2_250/Pool-U5-250_S10_L001_R1_001.fastq.gz
 curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR140/066/SRR14022266/SRR14022266_2.fastq.gz -o data/run2_250/Pool-U5-250_S10_L001_R2_001.fastq.gz
 
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR169/012/SRR16944112/SRR16944112_1.fastq.gz -o data/run2_250/Pool-C1-250_S6_L001_R1_001.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR169/012/SRR16944112/SRR16944112_2.fastq.gz -o data/run2_250/Pool-C1-250_S6_L001_R2_001.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR169/011/SRR16944111/SRR16944111_1.fastq.gz -o data/run2_250/Pool-C2-250_S7_L001_R1_001.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR169/011/SRR16944111/SRR16944111_2.fastq.gz -o data/run2_250/Pool-C2-250_S7_L001_R2_001.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR169/010/SRR16944110/SRR16944110_1.fastq.gz -o data/run2_250/Pool-C3-250_S8_L001_R1_001.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR169/010/SRR16944110/SRR16944110_2.fastq.gz -o data/run2_250/Pool-C3-250_S8_L001_R2_001.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR169/009/SRR16944109/SRR16944109_1.fastq.gz -o data/run2_250/Pool-C4-250_S9_L001_R1_001.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR169/009/SRR16944109/SRR16944109_2.fastq.gz -o data/run2_250/Pool-C4-250_S9_L001_R2_001.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR169/008/SRR16944108/SRR16944108_1.fastq.gz -o data/run2_250/Pool-C5-250_S10_L001_R1_001.fastq.gz
+curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR169/008/SRR16944108/SRR16944108_2.fastq.gz -o data/run2_250/Pool-C5-250_S10_L001_R2_001.fastq.gz
+
 # Download trap samples
 curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR140/082/SRR14022282/SRR14022282_1.fastq.gz -o data/run3_trap/Trap-01_S1_L001_R1_001.fastq.gz
 curl -L ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR140/082/SRR14022282/SRR14022282_2.fastq.gz -o data/run3_trap/Trap-01_S1_L001_R2_001.fastq.gz
