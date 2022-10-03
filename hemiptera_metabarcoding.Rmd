@@ -654,11 +654,6 @@ bar <- lineage %>%
   select(id, loci, Value) %>%
   complete(loci, id, fill=list(Value=0))
 
-## Plot tree + metadata (Old Plot)
-#p2 <- facet_plot(p, 'Unique Species', data = bar, geom=ggstance::geom_barh,
-#                 mapping=aes(x=Value, fill=loci), stat="identity", position="dodge") +
-#                theme_bw() +
-#                scale_fill_manual(values =c("#FC4E07", "#E7B800", "#00AFBB"))
 
 # Make barplot separately
 p1 <- bar %>%
@@ -839,7 +834,7 @@ Fig1a <- ggplot(df_exp, aes(x= SampleID, y=Abundance,fill= Genus)) +
 # Plot Fig1b - all 3 loci merged
 df_mock <- subset_taxa(ps, Phylum == "Arthropoda") %>% 
   subset_samples(biome == "Laboratory") %>%
-  subset_samples(sample_names(psmock)!=rm_c1) %>%
+  subset_samples(sample_names(ps_filtered)!=rm_c1) %>%
   tax_glom("Species", NArm = TRUE) %>%
   filter_taxa(function(x) mean(x) > 0, TRUE) %>%
   psmelt() %>%
@@ -972,6 +967,8 @@ Fig1e <- ggplot(df_12s, aes(x= SampleID, y=Abundance,fill= Genus)) +
 Fig1 <- Fig1a + Fig1b + Fig1c + Fig1d + Fig1e + plot_layout(ncol = 5)
 
 plot(Fig1)
+
+# NOTE: Extra annotations were added outside of R to highlight the samples/loci where false positives or false negatives were observed
 ```
 
 ## Figure 5 - Detection heatmap
@@ -1108,6 +1105,8 @@ Fig2b <- ggplot(joint, aes(loci, Species)) +
 Fig2 <- Fig2b + Fig2a + plot_layout(ncol = 2, widths=c(2,4)) 
 
 plot(Fig2)
+
+# NOTE: Some final edits were made to this plot outside of R
 ```
 
 # Supplementary figures
@@ -1175,6 +1174,8 @@ FigS1 <- ggplot(data = switchplot, aes(x = i7, y = i5), stat="identity") +
                          sprintf("%1.2f%%", switch_rate*100)))
 
 plot(FigS1)
+
+# NOTE: Some final edits were made to this plot outside of R
 ```
 
 ## Supplementary Figure 2 - Edit Distances
@@ -1303,5 +1304,6 @@ gg.i7dist <- ggplot(data=i7dist, aes(x=dist,y=count,colour=dist)) +
 FigS2 <- plvi5 + plvi7 + gg.i5dist  + gg.i7dist
 
 plot(FigS2)
+# NOTE: Some final edits were made to this plot outside of R
 ```
 
