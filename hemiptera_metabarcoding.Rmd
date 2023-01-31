@@ -541,6 +541,9 @@ ps_filtered <- subset_taxa(ps, Phylum == "Arthropoda") %>%
   transform_sample_counts(fun = proportions, thresh=filt_threshold) %>% 
   filter_taxa(function(x) mean(x) > 0, TRUE) 
 
+# Write out filtered phyloseq object
+saveRDS(ps_filtered, "output/rds/ps_filtered.rds")
+
 # Export filtered data
 write.csv(psmelt(ps_filtered), file = "output/csv/filtered/all_arthropoda_filt.csv")
 
@@ -569,33 +572,39 @@ summarize_taxa(ps_filtered, "Genus", "SampleID") %>%
   spread(key="SampleID", value="totalRA") %>%
   write.csv(file = "output/csv/filtered/all_genglom_filt_summarized.csv")
 
-# Export species level, summarised by mean abundance across loci
+# Export Species level summary - mean abundance across loci
 subset_taxa(ps_filtered, Phylum == "Arthropoda") %>% 
-  tax_glom("Species", NArm = TRUE) %>%
   psmelt() %>%
   filter(Abundance > 0) %>%
+  group_by(Species, loci, SampleID) %>%
+  summarise(Abundance = sum(Abundance)) %>% # Sum abundance for the all asvs from same genus within loci
+  ungroup()%>%
   group_by(SampleID, loci) %>%
-  mutate_at(vars(Abundance), ~ . / sum(.))  %>% #Convert to proportions within loci
+  mutate_at(vars(Abundance), ~ . / sum(.))  %>% #Convert to proportions again
   ungroup() %>%
   group_by(Species, SampleID) %>%
-  summarise(Abundance = mean(Abundance))%>%
+  summarise(Abundance = mean(Abundance))%>% # Then take the mean of the 3 loci
   group_by(SampleID) %>%
-  mutate_at(vars(Abundance), ~ . / sum(.))%>%
+  mutate_at(vars(Abundance), ~ . / sum(.)) %>% # Convert to proportions again
+  ungroup() %>%
   spread(key="SampleID", value="Abundance")%>%
   write.csv(file = "output/csv/filtered/all_sppglom_filt_meanra_summarized.csv")
 
-# Export species level, summarised by mean abundance across loci
+# Export Genus level summary - mean abundance across loci
 subset_taxa(ps_filtered, Phylum == "Arthropoda") %>% 
-  tax_glom("Species", NArm = TRUE) %>%
   psmelt() %>%
   filter(Abundance > 0) %>%
+  group_by(Genus, loci, SampleID) %>%
+  summarise(Abundance = sum(Abundance)) %>% # Sum abundance for the all asvs from same genus within loci
+  ungroup()%>%
   group_by(SampleID, loci) %>%
-  mutate_at(vars(Abundance), ~ . / sum(.))  %>% #Convert to proportions within loci
+  mutate_at(vars(Abundance), ~ . / sum(.))  %>% #Convert to proportions again
   ungroup() %>%
   group_by(Genus, SampleID) %>%
-  summarise(Abundance = mean(Abundance))%>%
+  summarise(Abundance = mean(Abundance))%>% # Then take the mean of the 3 loci
   group_by(SampleID) %>%
-  mutate_at(vars(Abundance), ~ . / sum(.))%>%
+  mutate_at(vars(Abundance), ~ . / sum(.)) %>% # Convert to proportions again
+  ungroup() %>%
   spread(key="SampleID", value="Abundance")%>%
   write.csv(file = "output/csv/filtered/all_genglom_filt_meanra_summarized.csv")
 
@@ -876,14 +885,17 @@ df_mock <- subset_taxa(ps_filtered, Phylum == "Arthropoda") %>%
   tax_glom("Species", NArm = TRUE) %>%
   filter_taxa(function(x) mean(x) > 0, TRUE) %>%
   psmelt() %>%
-  filter(Abundance > 0) %>%
+  filter(Abundance > 0)  %>%
+  group_by(Genus, loci, SampleID, pool_comp) %>%
+  summarise(Abundance = sum(Abundance)) %>% # Sum abundance for the all asvs from same genus within loci
+  ungroup()%>%
   group_by(SampleID, loci) %>%
-  mutate_at(vars(Abundance), ~ . / sum(.))  %>% #Convert to proportions within loci
+  mutate_at(vars(Abundance), ~ . / sum(.))  %>% #Convert to proportions again
   ungroup() %>%
   group_by(Genus, SampleID, pool_comp) %>%
-  summarise(Abundance = mean(Abundance))%>%
+  summarise(Abundance = mean(Abundance))%>% # Then take the mean of the 3 loci
   group_by(SampleID) %>%
-  mutate_at(vars(Abundance), ~ . / sum(.))
+  mutate_at(vars(Abundance), ~ . / sum(.)) # Convert to proportions again
 
 # Reorder to pool composition
 df_mock$SampleID <- factor(df_mock$SampleID, 
@@ -919,7 +931,7 @@ tax_table(ps_coi) <- tax_table(ps_coi)[,2:7]
 df_coi <- psmelt(ps_coi) %>%
   filter(Abundance > 0)%>%
   group_by(Genus, SampleID, pool_comp) %>%
-  summarise(Abundance = mean(Abundance))%>%
+  summarise(Abundance = sum(Abundance))%>%
   group_by(SampleID) %>%
   mutate_at(vars(Abundance), ~ . / sum(.))
 
@@ -957,7 +969,7 @@ tax_table(ps_18s) <- tax_table(ps_18s)[,2:7]
 df_18s <- psmelt(ps_18s) %>%
   filter(Abundance > 0)%>%
   group_by(Genus, SampleID, pool_comp) %>%
-  summarise(Abundance = mean(Abundance))%>%
+  summarise(Abundance = sum(Abundance))%>%
   group_by(SampleID) %>%
   mutate_at(vars(Abundance), ~ . / sum(.))
 
@@ -994,7 +1006,7 @@ tax_table(ps_12s) <- tax_table(ps_12s)[,2:7]
 df_12s <- psmelt(ps_12s) %>%
   filter(Abundance > 0)%>%
   group_by(Genus, SampleID, pool_comp) %>%
-  summarise(Abundance = mean(Abundance))%>%
+  summarise(Abundance = sum(Abundance))%>%
   group_by(SampleID) %>%
   mutate_at(vars(Abundance), ~ . / sum(.))
 
