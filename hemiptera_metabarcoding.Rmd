@@ -374,12 +374,20 @@ macse_aligned <- readAAStringSet("output/coi_seqs_AA.fasta")
 
 is_pseudogene <- sapply(macse_aligned, function(x){
   #Consider only internal stop codons
-  int_codons <- x %>% 
+  int_codons <- as.character(x) %>% 
     str_remove("^!") %>% # Remove stop codon at start of seq
     str_remove("![-]*$") # Remove any stop codon at end of seq
   # Detect if sequence contains internal stop codons
-  #str_detect(int_codons, "!") 
+  str_detect(int_codons, "!") 
 })
+
+# Check results
+pseudo_results <- tibble::enframe(as.character(macse_aligned), name="asv", value="aligned") %>%
+  bind_cols(is_pseudogene) %>%
+  magrittr::set_colnames(c("asv", "aligned", "pseudo")) %>%
+  mutate(aligned_trimmed  = aligned %>% 
+    str_remove("^!") %>% # Remove stop codon at start of seq
+    str_remove("![-]*$")) # Remove any stop codon at end of seq)
 
 pseudogene_seqs <- names(macse_aligned)[is_pseudogene]
 
@@ -495,7 +503,7 @@ switch_rate <- (sum(obs_rate$count)/sum(exp_rate$count))
 message(switch_rate)
 
 # Rate of undetected switching should be switch_rate squared
-filt_threshold <- switch_rate^2
+filt_threshold <- switch_rate^2 # This should be 0.00011664
 message(paste0("The threshold for filtering will be: ",filt_threshold))
 ```
 
@@ -560,6 +568,36 @@ summarize_taxa(ps_filtered, "Species", "SampleID") %>%
 summarize_taxa(ps_filtered, "Genus", "SampleID") %>%
   spread(key="SampleID", value="totalRA") %>%
   write.csv(file = "output/csv/filtered/all_genglom_filt_summarized.csv")
+
+# Export species level, summarised by mean abundance across loci
+subset_taxa(ps_filtered, Phylum == "Arthropoda") %>% 
+  tax_glom("Species", NArm = TRUE) %>%
+  psmelt() %>%
+  filter(Abundance > 0) %>%
+  group_by(SampleID, loci) %>%
+  mutate_at(vars(Abundance), ~ . / sum(.))  %>% #Convert to proportions within loci
+  ungroup() %>%
+  group_by(Species, SampleID) %>%
+  summarise(Abundance = mean(Abundance))%>%
+  group_by(SampleID) %>%
+  mutate_at(vars(Abundance), ~ . / sum(.))%>%
+  spread(key="SampleID", value="Abundance")%>%
+  write.csv(file = "output/csv/filtered/all_sppglom_filt_meanra_summarized.csv")
+
+# Export species level, summarised by mean abundance across loci
+subset_taxa(ps_filtered, Phylum == "Arthropoda") %>% 
+  tax_glom("Species", NArm = TRUE) %>%
+  psmelt() %>%
+  filter(Abundance > 0) %>%
+  group_by(SampleID, loci) %>%
+  mutate_at(vars(Abundance), ~ . / sum(.))  %>% #Convert to proportions within loci
+  ungroup() %>%
+  group_by(Genus, SampleID) %>%
+  summarise(Abundance = mean(Abundance))%>%
+  group_by(SampleID) %>%
+  mutate_at(vars(Abundance), ~ . / sum(.))%>%
+  spread(key="SampleID", value="Abundance")%>%
+  write.csv(file = "output/csv/filtered/all_genglom_filt_meanra_summarized.csv")
 
 # Write out seperate data table for each loci
 genes <- psmelt(ps) %>%
@@ -832,7 +870,7 @@ Fig1a <- ggplot(df_exp, aes(x= SampleID, y=Abundance,fill= Genus)) +
   coord_flip()
 
 # Plot Fig1b - all 3 loci merged
-df_mock <- subset_taxa(ps, Phylum == "Arthropoda") %>% 
+df_mock <- subset_taxa(ps_filtered, Phylum == "Arthropoda") %>% 
   subset_samples(biome == "Laboratory") %>%
   subset_samples(sample_names(ps_filtered)!=rm_c1) %>%
   tax_glom("Species", NArm = TRUE) %>%
@@ -842,11 +880,11 @@ df_mock <- subset_taxa(ps, Phylum == "Arthropoda") %>%
   group_by(SampleID, loci) %>%
   mutate_at(vars(Abundance), ~ . / sum(.))  %>% #Convert to proportions within loci
   ungroup() %>%
-  group_by(Abundance, Species, Genus, SampleID, pool_comp) %>%
+  group_by(Genus, SampleID, pool_comp) %>%
   summarise(Abundance = mean(Abundance))%>%
   group_by(SampleID) %>%
   mutate_at(vars(Abundance), ~ . / sum(.))
-  
+
 # Reorder to pool composition
 df_mock$SampleID <- factor(df_mock$SampleID, 
                            levels = unique(df_mock$SampleID[order(-df_mock$pool_comp)]))
@@ -878,7 +916,12 @@ ps_coi <- ps_coi %>%
 
 
 tax_table(ps_coi) <- tax_table(ps_coi)[,2:7]
-df_coi <- psmelt(ps_coi)
+df_coi <- psmelt(ps_coi) %>%
+  filter(Abundance > 0)%>%
+  group_by(Genus, SampleID, pool_comp) %>%
+  summarise(Abundance = mean(Abundance))%>%
+  group_by(SampleID) %>%
+  mutate_at(vars(Abundance), ~ . / sum(.))
 
 # Reorder to pool composition
 df_coi$SampleID <- factor(df_coi$SampleID,
@@ -911,7 +954,12 @@ ps_18s <- ps_18s %>%
   filter_taxa(function(x) mean(x) > 0, TRUE) 
 
 tax_table(ps_18s) <- tax_table(ps_18s)[,2:7]
-df_18s <- psmelt(ps_18s)
+df_18s <- psmelt(ps_18s) %>%
+  filter(Abundance > 0)%>%
+  group_by(Genus, SampleID, pool_comp) %>%
+  summarise(Abundance = mean(Abundance))%>%
+  group_by(SampleID) %>%
+  mutate_at(vars(Abundance), ~ . / sum(.))
 
 # Reorder to pool composition
 df_18s$SampleID <- factor(df_18s$SampleID,
@@ -943,7 +991,12 @@ ps_12s <- ps_12s %>%
   filter_taxa(function(x) mean(x) > 0, TRUE)
 
 tax_table(ps_12s) <- tax_table(ps_12s)[,2:7]
-df_12s <- psmelt(ps_12s)
+df_12s <- psmelt(ps_12s) %>%
+  filter(Abundance > 0)%>%
+  group_by(Genus, SampleID, pool_comp) %>%
+  summarise(Abundance = mean(Abundance))%>%
+  group_by(SampleID) %>%
+  mutate_at(vars(Abundance), ~ . / sum(.))
 
 # Reorder to pool composition
 df_12s$SampleID <- factor(df_12s$SampleID,
